@@ -1,4 +1,4 @@
-package com.github.lunarolympian.TaratiBot.training.iterative;
+package com.github.lunarolympian.TaratiBot.training;
 
 import com.github.lunarolympian.TaratiBot.board.BoardMap;
 import com.github.lunarolympian.TaratiBot.tardar.NN;
@@ -18,10 +18,6 @@ public class IterativeRefinement {
         // Creates 2 random neural networks.
         NN nn1 = new NN();
         NN nn2 = new NN();
-        Nd4j.getMemoryManager().setAutoGcWindow(10000);
-
-
-
 
         File file = new File("C:\\Users\\sebas\\Documents\\Tarati\\Tarati board states\\TardarTrainingStates.txt");
         ArrayList<LayerOptimiser> layerOptimisers = new ArrayList<>();
@@ -34,7 +30,7 @@ public class IterativeRefinement {
         practiceStates.toArray(fullPracticeStates);
 
         for(int i = 0; i < 3; i++)
-            layerOptimisers.add(new LayerOptimiser(i, 20, new NN(nn1), new NN(nn2), practiceStates));
+            layerOptimisers.add(new LayerOptimiser(i, 3, new NN(nn1), new NN(nn2), practiceStates));
 
         for(LayerOptimiser optimiser : layerOptimisers) {
             optimiser.run();
@@ -45,29 +41,6 @@ public class IterativeRefinement {
             else
                 nn2.saveToFile(args[0]);
         }
-
-        // Now it puts them against each other
-        /*for(int i = 0; i < 1000; i++) {
-            Collections.shuffle(practiceStates);
-            BoardMap[] testStates = new BoardMap[10];
-            testStates[0] = new BoardMap("new", true);
-            for(int j = 1; j < 10; j++) {
-                testStates[j] = practiceStates.get(j - 1);
-            }
-            int[] results = simulateGames(testStates, 1, nn1, nn2);
-
-            System.out.println((i + 1) + " - " + Arrays.toString(results));
-
-            if(results[0] <= results[1]) nn1.iterateNN(nn2, testStates);
-            else nn2.iterateNN(nn1, testStates);
-
-            results = simulateGames(testStates, 1, nn1, nn2);
-
-            if(results[0] >= results[1])
-                nn1.saveToFile(args[0]);
-            else
-                nn2.saveToFile(args[0]);
-        }*/
 
     }
 
@@ -189,4 +162,6 @@ public class IterativeRefinement {
             }
         }
     }
+
+
 }

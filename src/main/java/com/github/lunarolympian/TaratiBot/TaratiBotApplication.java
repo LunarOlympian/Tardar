@@ -3,7 +3,6 @@ package com.github.lunarolympian.TaratiBot;
 import com.github.lunarolympian.TaratiBot.tardar.NN;
 import com.github.lunarolympian.TaratiBot.tardar.Tardar;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.PrevalBuilder;
-import com.github.lunarolympian.TaratiBot.training.Ladder;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -23,9 +22,6 @@ public class TaratiBotApplication {
             case "run":
                 tardar = new Tardar(null, new File(args[1]));
                 SpringApplication.run(TaratiBotApplication.class, args);
-                break;
-            case "ladder":
-                Ladder.runLadder(args[1]);
                 break;
             case "preval":
                 PrevalBuilder.buildPreval(args[1], args[2], args[3]);

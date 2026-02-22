@@ -3,10 +3,13 @@ package com.github.lunarolympian.TaratiBot.tardar;
 import com.github.lunarolympian.TaratiBot.board.BoardMap;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.Preval;
-import com.github.lunarolympian.TaratiBot.training.iterative.IterativeRefinement;
+import com.github.lunarolympian.TaratiBot.training.IterativeRefinement;
+import org.deeplearning4j.nn.api.OptimizationAlgorithm;
+import org.deeplearning4j.nn.conf.BackpropType;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.conf.layers.DenseLayer;
+import org.deeplearning4j.nn.conf.layers.OutputLayer;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
 import org.deeplearning4j.optimize.listeners.PerformanceListener;
@@ -30,7 +33,8 @@ public class NN {
     public NN() {
         MultiLayerConfiguration configuration
                 = new NeuralNetConfiguration.Builder()
-                .activation(Activation.SIGMOID)
+                .activation(Activation.RELU)
+                .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
                 .weightInit(WeightInit.XAVIER)
                 .biasInit(0.5)
                 .list()
@@ -38,7 +42,8 @@ public class NN {
                 .layer(0, new DenseLayer.Builder().nIn(23).nOut(23).build())
                 .layer(1, new DenseLayer.Builder().nIn(23).nOut(23).build())
                 .layer(2, new DenseLayer.Builder().nIn(23).nOut(23).build())
-                .layer(3, new DenseLayer.Builder().nIn(23).nOut(1).build())
+                .layer(3, new OutputLayer.Builder().nIn(23).nOut(1).build())
+                .backpropType(BackpropType.Standard)
                 .build();
 
         this.network = new MultiLayerNetwork(configuration);
@@ -307,8 +312,6 @@ public class NN {
     public float score(FastBoardMap map) {
         float[] boardArray = new float[23];
 
-        // TODO Add in a check for if the board is marked as bad or the opponent can win the game the next move.
-
         for(int i = 1; i < 9; i++) {
             int tile = map.getGameState()[i];
             if(tile > 22) tile -= 23;
@@ -325,6 +328,37 @@ public class NN {
         double score = scoreArray.toDoubleVector()[0];
         return (float) score;
     }
+
+    public float betaScoring(FastBoardMap startingMap, FastBoardMap endingMap) {
+        float[] boardArray = new float[23];
+
+        for(int i = 1; i < 9; i++) {
+            int tile = startingMap.getGameState()[i];
+            if(tile > 22) tile -= 23;
+            int white = (i > startingMap.getGameState()[0] ? -1 : 1);
+            boolean king = startingMap.getGameState()[i] > 22;
+
+
+            boardArray[tile] = 0.5f; // Occupied tile
+            boardArray[tile] += (king ? 0.5f : 0f); // King
+            boardArray[tile] *= white; // Colour
+        }
+
+        INDArray scoreArray = this.network.feedForward(new NDArray(boardArray)).getLast();
+        double score = scoreArray.toDoubleVector()[0];
+        return (float) score;
+    }
+
+    public void betaBackPropagate(File file) throws IOException {
+        String[] moves = Files.readString(file.toPath()).split("\n");
+
+        for(String move : moves) {
+            FastBoardMap fbm = new FastBoardMap(new BoardMap(move.split(" ")[0], move.split(" ")[2].equalsIgnoreCase("W")));
+
+
+        }
+    }
+
 
     public ArrayList<NN> evolveNetwork(int quota) {
         ArrayList<NN> networks = new ArrayList<>();

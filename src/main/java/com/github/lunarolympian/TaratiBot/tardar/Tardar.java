@@ -5,7 +5,6 @@ import com.github.lunarolympian.TaratiBot.board.BoardUtils;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.Preval;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.GameNode;
-import com.github.lunarolympian.TaratiBot.training.Gauntlet;
 
 import java.io.File;
 import java.io.IOException;
@@ -44,7 +43,11 @@ public class Tardar {
     public FastBoardMap runNN(FastBoardMap map) throws InterruptedException {
         // Checks if it matches any branches on the sinking tree, then attempts to build another layer.
         GameNode tree = new GameNode(map, nn);
-        return tree.getBestMove();
+        FastBoardMap fbm = tree.getBestMove();
+
+        tree = null;
+        System.gc(); // It devours memory otherwise.
+        return fbm;
     }
 
     /**
