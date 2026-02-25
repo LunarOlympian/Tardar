@@ -36,11 +36,14 @@ public class FastBoardMap {
      */
     public static void main(String[] args) {
         FastBoardMap fbm = new FastBoardMap(new byte[]{
-                4,
+                3,
                 0, 1, 4, 5,
                 2, 3, 10, 11
         });
-        var fullTurn = fbm.getFullTurn(true);
+
+        fbm = fbm.flipBoard();
+
+        System.out.println("123");
     }
 
     /**
@@ -399,11 +402,36 @@ public class FastBoardMap {
         return previousMove;
     }
 
+    /**
+     * This literally goes against the point of the class, so ONLY use it in training!
+     * @return The flipped board.
+     */
+    public FastBoardMap flipBoard() {
+        byte[] mirroredMap = new byte[9];
+        mirroredMap[0] = (byte) (8 - boardState[0]);
+
+        for(int i = boardState[0] + 1; i < 9; i++)
+            mirroredMap[i - boardState[0]] = BoardUtils.invertPiece(boardState[i]);
+
+        for(int i = 1; i <= boardState[0]; i++)
+            mirroredMap[i + (8 - boardState[0])] = BoardUtils.invertPiece(boardState[i]);
+
+        return new FastBoardMap(mirroredMap);
+    }
+
     public void setFlag(int flag, byte value) {
         flags[flag] = value;
     }
 
     public byte[] getFlags() {
         return flags;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if(!(o instanceof FastBoardMap)) return false;
+
+        FastBoardMap fbm = (FastBoardMap) o;
+        return Arrays.equals(fbm.getGameState(), this.boardState);
     }
 }

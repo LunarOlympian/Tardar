@@ -4,9 +4,9 @@ import com.github.lunarolympian.TaratiBot.board.BoardMap;
 import com.github.lunarolympian.TaratiBot.board.BoardUtils;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
 import com.github.lunarolympian.TaratiBot.tardar.NN;
+import com.github.lunarolympian.TaratiBot.training.TardarNN;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The game tree. Manages all potential game states and prunes itself so less work is necessary.
@@ -17,18 +17,19 @@ public class GameNode {
     Essentially, if Tardar just made a move, then it's an unfriendly branch.
     */
     private FastBoardMap map;
-    private NN nn;
+    private TardarNN nn;
     private Map<FastBoardMap, ArrayList<GameNode>> children;
 
     private Float score;
     private Float dangerScore = 0f;
+    private boolean assessed = false;
     private int lossDepth = -1;
     private Float branchScore;
 
     private static long nodeCounter = 0;
 
 
-    public GameNode(BoardMap map, NN nn) {
+    public GameNode(BoardMap map, TardarNN nn) {
         this.map = new FastBoardMap(map);
         this.nn = nn;
         this.score = 0f;
@@ -36,7 +37,7 @@ public class GameNode {
         this.children = new HashMap<>();
     }
 
-    public GameNode(FastBoardMap map, NN nn) {
+    public GameNode(FastBoardMap map, TardarNN nn) {
         this.map = map;
         this.nn = nn;
         this.score = 0f;
@@ -61,7 +62,7 @@ public class GameNode {
             for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption, nn));
 
             for(GameNode node : gameNodes) {
-                node.buildTree(startTime + 30_000, 2, false);
+                node.buildTree(startTime + 30_000, 3, false);
             }
             nodeMap.put(opponentState, gameNodes);
         }
@@ -77,10 +78,20 @@ public class GameNode {
 
         // This scores and puts the nodes in descending order, then checks to find the best one that doesn't
         // lose it the game
-        Map<FastBoardMap, Float> scores = new HashMap<>();
+        Map<FastBoardMap, Integer> scores = new HashMap<>();
         for(FastBoardMap opponentState : nodeMap.keySet()) {
-            scores.put(opponentState, nn.score(opponentState));
+            ArrayList<GameNode> opponentOptions = nodeMap.get(opponentState);
+            Map<GameNode, Integer> opponentOptionScores = new HashMap<>();
+            for(GameNode node : opponentOptions) {
+                opponentOptionScores.put(node, node.getGuaranteedPieces());
+                node.freeMemory();
+            }
+
+            opponentOptions.sort((Comparator.comparingInt(opponentOptionScores::get)));
+            scores.put(opponentState, opponentOptionScores.get(opponentOptions.getLast()));
         }
+
+        System.gc(); // Prevents some crashing
 
 
         ArrayList<FastBoardMap> orderedNodes = new ArrayList<>(nodeMap.keySet());
@@ -238,6 +249,16 @@ public class GameNode {
             return;
         }
 
+        /*if(this.assessed) {
+            for(ArrayList<GameNode> opponentOptions : children.values()) {
+                for(GameNode opponentOption : opponentOptions) {
+                    opponentOption.buildTree(timer, maxDepth - 1, limitedChecks);
+                }
+            }
+        }*/
+
+        this.assessed = true;
+
         // Builds the tree
         LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> possibleMoves = this.map.getFullTurn(limitedChecks, restrictedMoves);
 
@@ -286,6 +307,11 @@ public class GameNode {
 
         // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
         // Expands the children
+
+        // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+    }
+
+    private void climbTree(long timer, int maxDepth, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> possibleMoves, boolean limitedChecks) {
         ArrayList<FastBoardMap> losingStates = new ArrayList<>();
         float dangerScore = 0f; // Used to assess if a state should be avoided, even if it isn't a guaranteed loss.
         int dangerScoreCount = 0; // The amount of nodes checked for danger scores.
@@ -332,7 +358,36 @@ public class GameNode {
 
         for(FastBoardMap losingState : losingStates) children.remove(losingState);
         if(children.isEmpty()) this.score = -200f;
-        // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+    }
+
+    private int getGuaranteedPieces() {
+        if(children.isEmpty()) {
+            int score = 0;
+            for(int i = 1; i <= map.getGameState()[0]; i++) {
+                if(map.getGameState()[i] <= 22) score++;
+                else score += 2;
+            }
+            return score;
+        }
+
+
+        int bestChildPieceScore = 0;
+        for(FastBoardMap child : children.keySet()) {
+            int minPieceCount = 100;
+            for(GameNode opponentOption : children.get(child)) {
+                int opponentOptionScore = opponentOption.getGuaranteedPieces();
+                if(minPieceCount > opponentOptionScore) minPieceCount = opponentOptionScore;
+            }
+            if(minPieceCount > bestChildPieceScore) {
+                bestChildPieceScore = minPieceCount;
+            }
+        }
+
+        return bestChildPieceScore;
+    }
+
+    private void freeMemory() {
+        this.children.clear();
     }
 
     /**
@@ -358,12 +413,11 @@ public class GameNode {
         byte pm1 = move.getPreviousMove()[1];
         if((pm0 <= 5 || pm0 == 10 || pm0 == 11) && pm1 <= 3) offset -= 0.2f;
 
-        offset += 0.01f * move.getGameState()[0]; // Bonus points for each piece Tardar controls
         // Docks points for pieces not developed
-        int undevelopedPawns = 0;
+        int undevelopedCobs = 0;
         for(int i = 1; i <= move.getGameState()[0]; i++) {
-            if(move.getGameState()[i] <= 22 && move.getGameState()[i] <= 3) {
-                undevelopedPawns++;
+            if(move.getGameState()[i] <= 1) {
+                undevelopedCobs++;
             }
             else if(move.getGameState()[i] > 22 && move.getGameState()[i] - 23 <= 3)
                 offset -= 0.03f; // No limit for rocks
@@ -371,43 +425,8 @@ public class GameNode {
             if(move.getGameState()[i] > 23) offset += 0.01f; // Bonus points for extra rocks
         }
 
-        if(undevelopedPawns == 2) offset -= 0.03f; // Docks a bit for not developing any pawns.
+        if(undevelopedCobs == 2) offset -= 0.5f; // Docks a lot for not developing any cobs in the back.
 
-
-        HashSet<Byte> occupiedTiles = new HashSet<>();
-        for(int i = 1; i < 9; i++) {
-            occupiedTiles.add(move.getGameState()[i] <= 22 ? move.getGameState()[i] : (byte) (move.getGameState()[i] - 23));
-        }
-
-        int pinnedPieces = move.getGameState()[0];
-        for(int i = 1; i <= move.getGameState()[0]; i++) {
-            byte[] possibleMoves = BoardUtils.getForwardSpacesByte(
-                    move.getGameState()[i] <= 22 ? move.getGameState()[i] : (byte) (move.getGameState()[i] - 23));
-            if(possibleMoves == null) continue;
-            for(byte possibleMove : possibleMoves)
-            {
-                if (!occupiedTiles.contains(possibleMove)) {
-                    pinnedPieces--;
-                    break;
-                }
-            }
-        }
-        int opponentPinnedPieces = 8 - move.getGameState()[0];
-        for(int i = move.getGameState()[0] + 1; i < 9; i++) {
-            byte[] possibleMoves = BoardUtils.getBackwardSpaces(
-                    move.getGameState()[i] <= 22 ? move.getGameState()[i] : (byte) (move.getGameState()[i] - 23));
-            if(possibleMoves == null) continue;
-            for(byte possibleMove : possibleMoves)
-            {
-                if (!occupiedTiles.contains(possibleMove)) {
-                    opponentPinnedPieces--;
-                    break;
-                }
-            }
-        }
-
-
-        offset += ((opponentPinnedPieces - pinnedPieces) * 0.02f);
 
         return offset;
     }

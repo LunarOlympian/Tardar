@@ -5,9 +5,12 @@ import com.github.lunarolympian.TaratiBot.board.BoardUtils;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.Preval;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.GameNode;
+import com.github.lunarolympian.TaratiBot.training.TardarNN;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Map;
 
 public class Tardar {
 
@@ -18,44 +21,39 @@ public class Tardar {
     private GameNode tree;
     private BoardMap map;
     private File tardarFile;
-    private NN nn;
+    private TardarNN tardarNN;
     private Preval preval;
 
     public Tardar(BoardMap map) {
         this.map = map;
-        this.nn = new NN();
         //this.tree = new SinkingTree(map, nn, false);
     }
 
-    public Tardar(BoardMap map, File trdrFile) throws IOException, ClassNotFoundException {
+    public Tardar(BoardMap map, File trdrFile) throws IOException {
         this.map = map;
-        this.nn = new NN(trdrFile);
+        this.tardarNN = new TardarNN(trdrFile);
     }
 
     public void startGame(String board, boolean white) {
         this.map = new BoardMap(board, white);
     }
 
-    public void tardarSetNN(NN nn) {
-        this.nn = nn;
+    public void tardarSetNN(TardarNN nn) {
+        this.tardarNN = nn;
     }
 
     public FastBoardMap runNN(FastBoardMap map) throws InterruptedException {
         // Checks if it matches any branches on the sinking tree, then attempts to build another layer.
-        GameNode tree = new GameNode(map, nn);
-        FastBoardMap fbm = tree.getBestMove();
-
-        tree = null;
-        System.gc(); // It devours memory otherwise.
-        return fbm;
+        GameNode tree = new GameNode(map, tardarNN);
+        return tree.getBestMove();
     }
 
     /**
      * Loads a .trdr file. These files mostly contain the NN info and a lot of info on moves that have been taken note of before.
      * @param path The path to the file with the data.
      */
-    public void tardarLoad(File path) throws IOException, ClassNotFoundException {
-        this.nn = new NN(path);
+    public void tardarLoad(File path) throws IOException {
+        this.tardarNN = new TardarNN(path);
     }
 
     /**
@@ -108,74 +106,7 @@ public class Tardar {
         return 0;
     }
 
-    public void trainingArc() {
-        // This just loops through all neurons and tries to find the optimal value for each.
-        for(int s = 0; s < 3; s++) {
-            float[] neurons = nn.getWeights(s);
-
-            double latestAccuracy = playBot(1_000);
-            System.out.println(latestAccuracy);
-
-            for (int i = 0; i < neurons.length; i++) {
-                float neuron = neurons[i];
-                float starting = neuron;
-
-                int direction = 1;
-                float stepSize = 0.2f;
-
-                // Takes a max of 10 steps, first a small one to see if it can make an impact
-                for (int j = 0; j < 10; j++) {
-                    if (j == 0) {
-                        // First goal is to pinpoint the ideal direction to head in
-                        neuron += 0.4f;
-                        nn.updateWeight(s, i, neuron);
-                        double positive = playBot(1000);
-
-                        neuron = starting;
-                        neuron -= 0.4f;
-
-                        nn.updateWeight(s, i, neuron);
-                        double negative = playBot(1000);
-
-                        neuron = starting;
-
-                        if(positive < negative) {
-                            direction = -1;
-                            if(negative > latestAccuracy) latestAccuracy = negative;
-                            continue;
-                        }
-                        else if(positive == negative) break; // No point in messing with it
-                        if(positive > latestAccuracy) latestAccuracy = positive;
-                        continue;
-                    }
-
-                    // Updates the weight
-                    neuron += (stepSize * direction);
-                    //if (neuron > 1) neuron = 1f;
-                    //else if (neuron < 0) neuron = 0;
-                    nn.updateWeight(s, i, neuron);
-                    double newAccuracy = playBot(1000);
-
-                    // This can repeat for the remaining loops
-                    if (latestAccuracy > newAccuracy) {
-                        neuron -= stepSize;
-                        stepSize /= 2; // We know this is an improvement, so if there's an extra attempt it will shrink the step and see if that helps
-                        nn.updateWeight(s, i, neuron);
-                        continue;
-                    }
-                    // It getting more accurate isn't relevant as it's already improving.
-
-                    latestAccuracy = newAccuracy;
-                }
-
-                System.out.println(latestAccuracy);
-
-            }
-        }
-
-    }
-
     private double playBot(int rounds) {
-        return Gauntlet.simulateTardarGame(nn, rounds, false, false);
+        return 0d;
     }
 }

@@ -453,6 +453,23 @@ public abstract class BoardUtils {
         };
     }
 
+    public static byte invertPiece(byte piece) {
+        // This is surprisingly annoying to do without hard coding :/
+        int pieceOffset = piece <= 22 ? piece : piece - 23;
+        int pieceInverted = switch (pieceOffset) {
+            case 0, 1, 2, 3:
+                yield (pieceOffset + 2) % 4;
+            default:
+                if (pieceOffset < 16)
+                    yield ((pieceOffset + 2) % 12) + 4; // The + 2 is because - 4 ignores the D tiles, then +5 inverts the C tiles.
+                else if (pieceOffset < 22) // Corrections to the counter-clockwise thing are done in the conversion to tile
+                    yield ((pieceOffset - 13) % 6) + 16; // Same as above, but +3 inverts the B tiles
+                else yield 22;
+        };
+
+        return piece <= 22 ? (byte) pieceInverted : (byte) (pieceInverted + 23);
+    }
+
 
 
     public static byte[] getInvertedBoard(byte[] boardState) {
