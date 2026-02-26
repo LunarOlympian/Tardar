@@ -50,6 +50,33 @@ public class GameNode {
 
         Map<FastBoardMap, ArrayList<double[]>> moveInfo = new HashMap<>();
 
+
+        // Checks for any quick victories
+        for(FastBoardMap opponentState : moves.keySet()) {
+            ArrayList<GameNode> gameNodes = new ArrayList<>();
+            for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption, nn));
+
+            int winningStates = 0;
+
+            for(GameNode node : gameNodes) {
+                node.buildTree(startTime + 60_000, 3, false);
+
+                if(node.score <= -100f) {
+                    break;
+                }
+                else if(node.score >= 100f) {
+                    winningStates++;
+                }
+                node.freeMemory();
+            }
+            System.gc(); // Prevents memory problems for more complex board states
+
+            if(winningStates == gameNodes.size()) return opponentState;
+        }
+
+        nodeCounter = 0;
+
+        ArrayList<FastBoardMap> prunedList = new ArrayList<>();
         for(FastBoardMap opponentState : moves.keySet()) {
             ArrayList<GameNode> gameNodes = new ArrayList<>();
             boolean pruned = false;
@@ -66,9 +93,9 @@ public class GameNode {
                 nodeInfo[2] = node.getGuaranteedPieces();
                 opponentStateInfo.add(nodeInfo);
 
-                if(node.score <= -100f) {
+                if(node.score <= -100f && !pruned) {
                     pruned = true;
-                    break;
+                    prunedList.add(opponentState);
                 }
                 else if(node.score >= 100f) {
                     winningStates++;
@@ -83,17 +110,21 @@ public class GameNode {
             if(winningStates == gameNodes.size()) {
                 return opponentState;
             }
-            if(pruned) continue;
 
             moveInfo.put(opponentState, opponentStateInfo);
             nodeMap.put(opponentState, gameNodes);
         }
 
+        // This prevents Tardar from throwing the game if it spots a loss.
+        if(prunedList.size() != moveInfo.size()) {
+            for(FastBoardMap fbm : prunedList) moveInfo.remove(fbm);
+        }
+        else System.out.println("Pruned them all!");
+
         ArrayList<FastBoardMap> moveOptions = new ArrayList<>(moveInfo.keySet());
         moveOptions.sort((Comparator.comparingDouble(o -> moveInfo.get(o).getFirst()[2])));
 
         if(moveOptions.isEmpty()) {
-            System.out.println("Pruned them all!");
             return new ArrayList<>(moves.keySet()).getFirst();
         }
 
@@ -112,6 +143,8 @@ public class GameNode {
             });
             moveOptions.sort((Comparator.comparingDouble(averageMoveOptionScore::get)));
         }
+
+        System.out.println("Checked " + nodeCounter + " nodes!");
 
 
         return moveOptions.getLast();
