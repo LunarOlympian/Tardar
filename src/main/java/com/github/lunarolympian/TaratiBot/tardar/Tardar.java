@@ -3,14 +3,11 @@ package com.github.lunarolympian.TaratiBot.tardar;
 import com.github.lunarolympian.TaratiBot.board.BoardMap;
 import com.github.lunarolympian.TaratiBot.board.BoardUtils;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
-import com.github.lunarolympian.TaratiBot.tardar.gametree.Preval;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.GameNode;
 import com.github.lunarolympian.TaratiBot.training.TardarNN;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Map;
 
 public class Tardar {
 
@@ -18,11 +15,8 @@ public class Tardar {
             ("!D3_NORMAL_BLACK!D4_NORMAL_BLACK!C8_NORMAL_BLACK!D1_NORMAL_WHITE!" +
                     "D2_NORMAL_WHITE!C1_NORMAL_WHITE!C2_NORMAL_WHITE!B4_NORMAL_BLACK").trim(); // .trim() because I copied from console.
 
-    private GameNode tree;
     private BoardMap map;
-    private File tardarFile;
     private TardarNN tardarNN;
-    private Preval preval;
 
     public Tardar(BoardMap map) {
         this.map = map;
@@ -31,7 +25,7 @@ public class Tardar {
 
     public Tardar(BoardMap map, File trdrFile) throws IOException {
         this.map = map;
-        this.tardarNN = new TardarNN(trdrFile);
+        //this.tardarNN = new TardarNN(trdrFile);
     }
 
     public void startGame(String board, boolean white) {
@@ -42,10 +36,10 @@ public class Tardar {
         this.tardarNN = nn;
     }
 
-    public FastBoardMap runNN(FastBoardMap map) throws InterruptedException {
+    public FastBoardMap runNN(FastBoardMap map, Tardar.Difficulty difficulty) {
         // Checks if it matches any branches on the sinking tree, then attempts to build another layer.
-        GameNode tree = new GameNode(map, tardarNN);
-        return tree.getBestMove();
+        GameNode tree = new GameNode(map);
+        return tree.getBestMove(difficulty);
     }
 
     /**
@@ -108,5 +102,13 @@ public class Tardar {
 
     private double playBot(int rounds) {
         return 0d;
+    }
+
+    public static enum Difficulty {
+        EASY,
+        MEDIUM,
+        HARD,
+        EXPERT,
+        AGI
     }
 }

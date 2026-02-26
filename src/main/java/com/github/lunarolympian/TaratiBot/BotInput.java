@@ -3,6 +3,7 @@ package com.github.lunarolympian.TaratiBot;
 import com.github.lunarolympian.TaratiBot.board.BoardMap;
 import com.github.lunarolympian.TaratiBot.board.BoardUtils;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
+import com.github.lunarolympian.TaratiBot.tardar.Tardar;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,11 +24,20 @@ public class BotInput {
     @RequestMapping("/process")
     //@RequestMapping("")
     @CrossOrigin(origins="*")
-    public String process(String data, String colour) throws InterruptedException {
+    public String process(String data, String colour, String difficulty) throws InterruptedException {
+        Tardar.Difficulty diff = switch (difficulty.toLowerCase()) {
+            case "easy" -> Tardar.Difficulty.EASY;
+            case "medium" -> Tardar.Difficulty.MEDIUM;
+            case "hard" -> Tardar.Difficulty.HARD;
+            case "expert" -> Tardar.Difficulty.EXPERT;
+            case "agi" -> Tardar.Difficulty.AGI;
+            default -> throw new IllegalStateException("Invalid difficulty: " + difficulty);
+        };
+
 
         BoardMap map = new BoardMap(data, colour.equalsIgnoreCase("W"));
 
-        FastBoardMap bestMap = TaratiBotApplication.tardar.runNN(new FastBoardMap(map));
+        FastBoardMap bestMap = TaratiBotApplication.tardar.runNN(new FastBoardMap(map), diff);
 
         int[] convertedMove = new int[]{bestMap.getPreviousMove()[0], bestMap.getPreviousMove()[1]};
         if(convertedMove[0] > 22) convertedMove[0] -= 23;
@@ -53,7 +63,7 @@ public class BotInput {
     @CrossOrigin(origins="*")
     public String saveBoard(String data) throws IOException {
         File file = new File("C:\\Users\\sebas\\Documents\\Tarati\\Tarati board states\\TardarSavedMoves.txt");
-        String existingStates = Files.readString(file.toPath()).trim();
+        String existingStates = readString(file.toPath()).trim();
 
         TreeSet<String> existingSaves = new TreeSet<>(Comparator.comparingInt(i -> i.split(" ")[0].hashCode()));
         existingSaves.addAll(Arrays.asList(existingStates.split("\n")));

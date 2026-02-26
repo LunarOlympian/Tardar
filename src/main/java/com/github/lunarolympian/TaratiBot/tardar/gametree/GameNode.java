@@ -1,9 +1,7 @@
 package com.github.lunarolympian.TaratiBot.tardar.gametree;
 
-import com.github.lunarolympian.TaratiBot.board.BoardMap;
-import com.github.lunarolympian.TaratiBot.board.BoardUtils;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
-import com.github.lunarolympian.TaratiBot.tardar.NN;
+import com.github.lunarolympian.TaratiBot.tardar.Tardar;
 import com.github.lunarolympian.TaratiBot.training.TardarNN;
 
 import java.util.*;
@@ -17,29 +15,44 @@ public class GameNode {
     Essentially, if Tardar just made a move, then it's an unfriendly branch.
     */
     private FastBoardMap map;
-    private TardarNN nn;
     private LinkedHashMap<FastBoardMap, ArrayList<GameNode>> children;
 
     private Float score;
     private Float dangerScore = 0f;
-    private boolean assessed = false;
-    private int lossDepth = -1;
-    private Float branchScore;
+    private int minimumPieceScore = -1;
+
+    private static int searchDepth = 0;
+    private static int gcRate = 6;
+    private static Tardar.Difficulty difficulty;
 
     private static long nodeCounter = 0;
 
-    public GameNode(FastBoardMap map, TardarNN nn) {
+    public GameNode(FastBoardMap map) {
         this.map = map;
-        this.nn = nn;
         this.score = 0f;
-        this.branchScore = 0f;
         this.children = new LinkedHashMap<>();
     }
 
     // ------------------------------------------------------------
     // This is used exclusively for the root.
     // Acts as a combination of buildTree() and scoreBoard(), though with some modifications for simplicity.
-    public FastBoardMap getBestMove() {
+    public FastBoardMap getBestMove(Tardar.Difficulty assessmentDifficulty) {
+
+        System.out.println("Beginning move processing");
+        switch (assessmentDifficulty) {
+            case EASY -> searchDepth = 3;
+            case MEDIUM -> searchDepth = 4;
+            case HARD -> searchDepth = 6;
+            case EXPERT -> searchDepth = 8;
+            case AGI -> searchDepth = 10;
+        }
+
+        difficulty = assessmentDifficulty;
+
+        gcRate = 6;
+        if(assessmentDifficulty == Tardar.Difficulty.AGI ||
+                assessmentDifficulty == Tardar.Difficulty.EXPERT) gcRate = 999;
+
         long startTime = System.currentTimeMillis();
 
         Map<FastBoardMap, ArrayList<FastBoardMap>> moves = this.map.getFullTurn(false);
@@ -50,16 +63,20 @@ public class GameNode {
 
         Map<FastBoardMap, ArrayList<double[]>> moveInfo = new HashMap<>();
 
-
+        long timer = switch (assessmentDifficulty) {
+            case EXPERT -> 180_000;
+            case AGI -> 300_000;
+            default -> 60_000;
+        };
         // Checks for any quick victories
         for(FastBoardMap opponentState : moves.keySet()) {
             ArrayList<GameNode> gameNodes = new ArrayList<>();
-            for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption, nn));
+            for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption));
 
             int winningStates = 0;
 
             for(GameNode node : gameNodes) {
-                node.buildTree(startTime + 60_000, 3, false);
+                node.buildTree(startTime + timer, 3, false);
 
                 if(node.score <= -100f) {
                     break;
@@ -82,12 +99,12 @@ public class GameNode {
             boolean pruned = false;
             int winningStates = 0;
 
-            for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption, nn));
+            for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption));
             ArrayList<double[]> opponentStateInfo = new ArrayList<>();
 
             for(GameNode node : gameNodes) {
                 double[] nodeInfo = new double[3];
-                node.buildTree(startTime + 60_000, 6, false);
+                node.buildTree(startTime + 60_000, searchDepth, false);
                 nodeInfo[0] = node.score;
                 nodeInfo[1] = node.dangerScore;
                 nodeInfo[2] = node.getGuaranteedPieces();
@@ -115,12 +132,15 @@ public class GameNode {
             nodeMap.put(opponentState, gameNodes);
         }
 
+        if(System.currentTimeMillis() > startTime + timer) System.out.println("    Time is up!");
+
         // This prevents Tardar from throwing the game if it spots a loss.
         if(prunedList.size() != moveInfo.size()) {
             for(FastBoardMap fbm : prunedList) moveInfo.remove(fbm);
         }
-        else System.out.println("Pruned them all!");
+        else System.out.println("    Pruned them all!");
 
+        System.out.println("    Checked " + nodeCounter + " nodes!");
         ArrayList<FastBoardMap> moveOptions = new ArrayList<>(moveInfo.keySet());
         moveOptions.sort((Comparator.comparingDouble(o -> moveInfo.get(o).getFirst()[2])));
 
@@ -144,7 +164,7 @@ public class GameNode {
             moveOptions.sort((Comparator.comparingDouble(averageMoveOptionScore::get)));
         }
 
-        System.out.println("Checked " + nodeCounter + " nodes!");
+
 
 
         return moveOptions.getLast();
@@ -245,7 +265,7 @@ public class GameNode {
             ArrayList<GameNode> nextTardarStates = new ArrayList<>();
 
             possibleMoves.get(pm)
-                    .forEach(opponentOption -> nextTardarStates.add(new GameNode(opponentOption, nn)));
+                    .forEach(opponentOption -> nextTardarStates.add(new GameNode(opponentOption)));
 
             this.children.put(pm, nextTardarStates);
         }
@@ -289,11 +309,11 @@ public class GameNode {
                 if(tardarPieceScore < minTardarPieceScore || minTardarPieceScore == -1) minTardarPieceScore = tardarPieceScore;
             }
 
-            //dangerScore += minTardarPieceScore * 0.01f;
-
             // Checks if all of its opponent's options win the game for Tardar
             if(opponentLosingStates == children.get(opponentState).size()) {
                 this.score = 200f;
+                if(maxDepth != 0)
+                    releaseChildren();
                 return; // As it has a winning move it doesn't need to bother checking anything else.
             }
         }
@@ -304,10 +324,38 @@ public class GameNode {
 
         for(FastBoardMap losingState : losingStates) children.remove(losingState);
         if(children.isEmpty()) this.score = -200f;
+        if(maxDepth != 0)
+            releaseChildren();
+    }
+
+    /**
+     * This frees up memory which helps a LOT with speed
+     * Essential to going to depths > 6
+     */
+    private void releaseChildren() {
+        // First it needs to get the best achievable score from the children
+        for(ArrayList<GameNode> opponentOptions : children.values()) {
+            // This is essentially getting the maximum of the minimums
+            int worstOpponentOption = 100;
+            for(GameNode opponentOption : opponentOptions) {
+                int ooScore = opponentOption.getGuaranteedPieces();
+                if(ooScore < worstOpponentOption) worstOpponentOption = ooScore;
+            }
+            if(worstOpponentOption > minimumPieceScore) this.minimumPieceScore = worstOpponentOption;
+        }
+
+        // Now it needs to clear the children and call the GC
+
+        this.children.clear();
+        if(nodeCounter % 200_000 == 0 && nodeCounter != 0) System.gc();
     }
 
     private int getGuaranteedPieces() {
         if(children.isEmpty()) {
+
+            if(minimumPieceScore > -1) // This handles states cleared to free up memory.
+                return minimumPieceScore;
+
             int score = 0;
             for(int i = 1; i < 9; i++) {
                 if(i <= map.getGameState()[0]) {

@@ -17,16 +17,9 @@ public class TaratiBotApplication {
     public static ArrayList<Tardar> tardarInstances = new ArrayList<>();
     public static NN nn;
 
-	public static void main(String[] args) throws IOException, ClassNotFoundException {
-        switch (args[0].toLowerCase()) {
-            case "run":
-                tardar = new Tardar(null, new File(args[1]));
-                SpringApplication.run(TaratiBotApplication.class, args);
-                break;
-            case "preval":
-                PrevalBuilder.buildPreval(args[1], args[2], args[3]);
-                break;
-        }
+	public static void main(String[] args) throws IOException {
+        tardar = new Tardar(null, null);
+        SpringApplication.run(TaratiBotApplication.class, args);
 
         /*NN test1 = new NN();
         System.out.println(test1.score(new BoardMap("new", true)));
