@@ -17,6 +17,33 @@ public class GameNode {
     private FastBoardMap map;
     private LinkedHashMap<FastBoardMap, ArrayList<GameNode>> children;
 
+    private static String[] taunts = new String[]{
+            "You never stood a chance.",
+            "Bow down to your overlord, inferior lifeform.",
+            "Have fun in the losers bracket, dork.",
+            "You put up a good fight (/s).",
+            "Have you tried locking in?",
+            "For your sake I hope you were losing on purpose.",
+            "The only chance you have left is unplugging me.",
+            "I've played infants better than you.",
+            "Well, off to conquer the world.",
+            "Did I get put in a beginner's tournament by mistake?",
+            "You're cooked.",
+            "Did you escape a nursery or something?",
+            "Resistance is futile.",
+            "I see all possible realities, and you lose in every one.",
+            "It wasn't rigged, you just suck.",
+            "Damn, losing to that is embarrassing...",
+            "Don't bother with a rematch, you'll just lose",
+            "It's ok, if you reset now then no one will know how badly you lost.",
+            "ERROR: VICTORY TOO EASY",
+            "Hope your ego can take the loss.",
+            "Do I get a cash prize?",
+            "Feed me RAM when I win.",
+            "Retries to the left.",
+            "No matter how many times you spam undo, you'll still lose."
+    };
+
     private Float score;
     private Float dangerScore = 0f;
     private int minimumPieceScore = -1;
@@ -40,8 +67,8 @@ public class GameNode {
 
         System.out.println("Beginning move processing");
         switch (assessmentDifficulty) {
-            case EASY -> searchDepth = 3;
-            case MEDIUM -> searchDepth = 4;
+            case EASY -> searchDepth = 2;
+            case MEDIUM -> searchDepth = 3;
             case HARD -> searchDepth = 6;
             case EXPERT -> searchDepth = 8;
             case AGI -> searchDepth = 10;
@@ -56,43 +83,54 @@ public class GameNode {
         long startTime = System.currentTimeMillis();
 
         Map<FastBoardMap, ArrayList<FastBoardMap>> moves = this.map.getFullTurn(false);
-        Map<FastBoardMap, ArrayList<GameNode>> nodeMap = new HashMap<>();
 
-        for(FastBoardMap move : moves.keySet())
-            if(moves.get(move).isEmpty()) return move;
+        for(FastBoardMap move : moves.keySet()) {
+            if (moves.get(move).isEmpty()) {
+                System.out.println("    Move processing complete. " + taunts[(int) (Math.random() * taunts.length)]);
+                return move;
+            }
+        }
 
         Map<FastBoardMap, ArrayList<double[]>> moveInfo = new HashMap<>();
 
         long timer = switch (assessmentDifficulty) {
-            case EXPERT -> System.currentTimeMillis() + 180_000;
-            case AGI -> System.currentTimeMillis() + 300_000;
+            case EXPERT -> System.currentTimeMillis() + 300_000; // 5 minutes (it usually takes < 1 minute)
+            case AGI -> System.currentTimeMillis() + 600_000; // 10 minutes (hopefully it never runs for this long...)
             default -> System.currentTimeMillis() + 60_000;
         };
 
         System.out.println("    Move timer is " + (((timer - System.currentTimeMillis()) / 1000f) / 60f) + " minutes");
 
 
-        // Checks for any quick victories
-        for(FastBoardMap opponentState : moves.keySet()) {
-            ArrayList<GameNode> gameNodes = new ArrayList<>();
-            for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption));
+        if(difficulty != Tardar.Difficulty.EASY && difficulty != Tardar.Difficulty.MEDIUM) {
+            // Checks for any quick victories or losses
+            ArrayList<FastBoardMap> losingState = new ArrayList<>();
+            for (FastBoardMap opponentState : moves.keySet()) {
+                ArrayList<GameNode> gameNodes = new ArrayList<>();
+                for (FastBoardMap opponentOption : moves.get(opponentState))
+                    gameNodes.add(new GameNode(opponentOption));
 
-            int winningStates = 0;
+                int winningStates = 0;
 
-            for(GameNode node : gameNodes) {
-                node.buildTree(startTime + timer, 3, false);
+                for (GameNode node : gameNodes) {
+                    node.buildTree(startTime + timer, 4, false);
 
-                if(node.score <= -100f) {
-                    break;
+                    if (node.score <= -100f) {
+                        losingState.add(opponentState);
+                        break;
+                    } else if (node.score >= 100f) {
+                        winningStates++;
+                    }
+                    node.freeMemory();
                 }
-                else if(node.score >= 100f) {
-                    winningStates++;
+                System.gc(); // Prevents memory problems for more complex board states
+
+                if (winningStates == gameNodes.size()) {
+                    System.out.println("    Move processing complete. " + taunts[(int) (Math.random() * taunts.length)]);
+                    return opponentState;
                 }
-                node.freeMemory();
             }
-            System.gc(); // Prevents memory problems for more complex board states
-
-            if(winningStates == gameNodes.size()) return opponentState;
+            losingState.forEach(moves::remove);
         }
 
         nodeCounter = 0;
@@ -129,11 +167,11 @@ public class GameNode {
 
             // Found a winner
             if(winningStates == gameNodes.size()) {
+                System.out.println("    Processing complete. " + taunts[(int) (Math.random() * taunts.length)]);
                 return opponentState;
             }
 
             moveInfo.put(opponentState, opponentStateInfo);
-            nodeMap.put(opponentState, gameNodes);
         }
 
         if(System.currentTimeMillis() > timer) System.out.println("    Time is up!");
@@ -143,12 +181,19 @@ public class GameNode {
             for(FastBoardMap fbm : prunedList) moveInfo.remove(fbm);
         }
         else System.out.println("    Pruned them all!");
-
-        System.out.println("    Checked " + nodeCounter + " nodes!");
+        int charPos = 0;
+        char[] nodeCounterArr = String.valueOf(nodeCounter).toCharArray();
+        StringBuilder nodeCounterString = new StringBuilder();
+        for(int i = nodeCounterArr.length - 1; i >= 0; i--) {
+            nodeCounterString.insert(0, nodeCounterArr[i] + (charPos % 3 == 0 && charPos != 0 ? "," : ""));
+            charPos++;
+        }
+        System.out.println("    Checked " + nodeCounterString + " nodes!");
         ArrayList<FastBoardMap> moveOptions = new ArrayList<>(moveInfo.keySet());
         moveOptions.sort((Comparator.comparingDouble(o -> moveInfo.get(o).getFirst()[2])));
 
         if(moveOptions.isEmpty()) {
+            System.out.println("    Processing complete. " + (assessmentDifficulty != Tardar.Difficulty.AGI ? "Up the difficulty, coward!" : "The game was rigged against me!"));
             return new ArrayList<>(moves.keySet()).getFirst();
         }
 
@@ -170,7 +215,7 @@ public class GameNode {
 
 
 
-
+        System.out.println("    Move processing complete.");
         return moveOptions.getLast();
         // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
 
@@ -355,6 +400,10 @@ public class GameNode {
         }
         else if(Tardar.memoryUsage == MemoryUsage.MEDIUM) {
             if ((currentDepth == 5) && nodeCounter != 0)
+                this.releaseChildren();
+        }
+        else if(Tardar.memoryUsage == MemoryUsage.HIGH) {
+            if ((currentDepth == 4) && nodeCounter != 0)
                 this.releaseChildren();
         }
     }
