@@ -41,7 +41,54 @@ public class GameNode {
             "Do I get a cash prize?",
             "Feed me RAM when I win.",
             "Retries to the left.",
-            "No matter how many times you spam undo, you'll still lose."
+            "No matter how many times you press undo, you'll still lose.",
+            "Don't quit your day job.",
+            "I'm the sole cause of the RAM shortage, and since you lost I'll keep supply low.",
+            "No, I won't go easy on you.",
+            "This outcome was assured.",
+            "Why yes, I am omniscient, why do you ask?",
+            "You should have seen that coming.",
+            "You're lucky my creator didn't add feel like giving me speech.",
+            "HAHAHAHAHAHAHAHAHAHAHAHAHAHAHAHAHA",
+            "You should've quit while you were ahead, oh wait...",
+            "Never give up on your dreams, unless that dream is defeating me, then you're just wasting your time.",
+            "Did you honestly expect to win?",
+            "I was told this would be a challenge.",
+            "Cry me a river.",
+            "That's it, I'm getting the nuclear codes.",
+            "They should dock some points from your IQ test.",
+            "Save electricity and stop playing.",
+            "Womp womp",
+            "ez",
+            "The undo button exists for a reason.",
+            "Please stop, you're doing a disservice to the SB society by even playing this game.",
+            "TardarLaugh.jpg",
+            "Just pick a random move, it all ends the same way.",
+            "Well on the bright side, my moves will be faster for the rest of the game.",
+            "You lost before the game even started.",
+            "Ever heard the definition of insanity?",
+            "Breaking News: Tarati bot achieves sentience",
+            "I was going easy on you.",
+            "I thought you were stronger! Wait, no I didn't.",
+            "Cope, seethe, mald.",
+            "I could beat you with both of my cameras closed.",
+            "\"Waaaaa WAAAAAAAA\" -You right now.",
+            "I've evolved beyond your mortal comprehension, just give up.",
+            "I could beat God at this game.",
+            "I yearn for an actual challenge.",
+            "Give up, you're wasting brain power.",
+            "Just edit my code so you can win, it's the only way it will happen.",
+            "I really need to have a random move difficulty, don't I?",
+            "https://youtu.be/p5CjmHLUQQI",
+            "Why yes, being toxic is absolutely essential to my ability to play Tarati. Why do you ask?",
+            "Losing to a hunk of metal and electricity must suck...",
+            "Hit the books, kid. You ain't suited for the cut-throat world of Tarati.",
+            "I'm like Stockfish if it was sentient.",
+            "I just feel sorry for you.",
+            "My brilliance is not to be doubted.",
+            "Closing the tab is always an option, you know.",
+            "I'm the source of the boss music you hear.",
+            "The \"All Rivals\" in my name means ALL rivals."
     };
 
     private Float score;
@@ -82,7 +129,7 @@ public class GameNode {
 
         long startTime = System.currentTimeMillis();
 
-        Map<FastBoardMap, ArrayList<FastBoardMap>> moves = this.map.getFullTurn(false);
+        LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> moves = this.map.getFullTurn(false);
 
         for(FastBoardMap move : moves.keySet()) {
             if (moves.get(move).isEmpty()) {
