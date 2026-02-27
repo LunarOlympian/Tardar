@@ -87,7 +87,8 @@ public class GameNode {
             "I just feel sorry for you.",
             "My brilliance is not to be doubted.",
             "Closing the tab is always an option, you know.",
-            "I'm the source of the boss music you hear."
+            "I'm the source of the boss music you hear.",
+            "The \"All Rivals\" in my name means ALL rivals."
     };
 
     private Float score;
