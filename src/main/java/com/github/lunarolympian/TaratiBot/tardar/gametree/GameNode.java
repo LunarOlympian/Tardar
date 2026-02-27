@@ -1,8 +1,8 @@
 package com.github.lunarolympian.TaratiBot.tardar.gametree;
 
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
+import com.github.lunarolympian.TaratiBot.tardar.MemoryUsage;
 import com.github.lunarolympian.TaratiBot.tardar.Tardar;
-import com.github.lunarolympian.TaratiBot.training.TardarNN;
 
 import java.util.*;
 
@@ -64,10 +64,14 @@ public class GameNode {
         Map<FastBoardMap, ArrayList<double[]>> moveInfo = new HashMap<>();
 
         long timer = switch (assessmentDifficulty) {
-            case EXPERT -> 180_000;
-            case AGI -> 300_000;
-            default -> 60_000;
+            case EXPERT -> System.currentTimeMillis() + 180_000;
+            case AGI -> System.currentTimeMillis() + 300_000;
+            default -> System.currentTimeMillis() + 60_000;
         };
+
+        System.out.println("    Move timer is " + (((timer - System.currentTimeMillis()) / 1000f) / 60f) + " minutes");
+
+
         // Checks for any quick victories
         for(FastBoardMap opponentState : moves.keySet()) {
             ArrayList<GameNode> gameNodes = new ArrayList<>();
@@ -104,7 +108,7 @@ public class GameNode {
 
             for(GameNode node : gameNodes) {
                 double[] nodeInfo = new double[3];
-                node.buildTree(startTime + 60_000, searchDepth, false);
+                node.buildTree(timer, searchDepth, false);
                 nodeInfo[0] = node.score;
                 nodeInfo[1] = node.dangerScore;
                 nodeInfo[2] = node.getGuaranteedPieces();
@@ -132,7 +136,7 @@ public class GameNode {
             nodeMap.put(opponentState, gameNodes);
         }
 
-        if(System.currentTimeMillis() > startTime + timer) System.out.println("    Time is up!");
+        if(System.currentTimeMillis() > timer) System.out.println("    Time is up!");
 
         // This prevents Tardar from throwing the game if it spots a loss.
         if(prunedList.size() != moveInfo.size()) {
@@ -313,7 +317,7 @@ public class GameNode {
             if(opponentLosingStates == children.get(opponentState).size()) {
                 this.score = 200f;
                 if(maxDepth != 0)
-                    releaseChildren();
+                    manageChildren(maxDepth);
                 return; // As it has a winning move it doesn't need to bother checking anything else.
             }
         }
@@ -325,14 +329,14 @@ public class GameNode {
         for(FastBoardMap losingState : losingStates) children.remove(losingState);
         if(children.isEmpty()) this.score = -200f;
         if(maxDepth != 0)
-            releaseChildren();
+            manageChildren(maxDepth);
     }
 
     /**
      * This frees up memory which helps a LOT with speed
      * Essential to going to depths > 6
      */
-    private void releaseChildren() {
+    private void manageChildren(int currentDepth) {
         // First it needs to get the best achievable score from the children
         for(ArrayList<GameNode> opponentOptions : children.values()) {
             // This is essentially getting the maximum of the minimums
@@ -346,8 +350,24 @@ public class GameNode {
 
         // Now it needs to clear the children and call the GC
 
-        this.children.clear();
-        if(nodeCounter % 200_000 == 0 && nodeCounter != 0) System.gc();
+        if(Tardar.memoryUsage == MemoryUsage.LOW) {
+            this.children.clear();
+        }
+        else if(Tardar.memoryUsage == MemoryUsage.MEDIUM) {
+            if ((currentDepth == 5) && nodeCounter != 0)
+                this.releaseChildren();
+        }
+    }
+
+    private void releaseChildren() {
+        if(this.children.isEmpty()) return;
+
+        children.forEach((_, nodes) -> {
+            for(GameNode node : nodes)
+                node.releaseChildren();
+        });
+
+        children.clear();
     }
 
     private int getGuaranteedPieces() {

@@ -37,7 +37,7 @@ public class BotInput {
 
         BoardMap map = new BoardMap(data, colour.equalsIgnoreCase("W"));
 
-        FastBoardMap bestMap = TaratiBotApplication.tardar.runNN(new FastBoardMap(map), diff);
+        FastBoardMap bestMap = TardarMain.tardar.runNN(new FastBoardMap(map), diff);
 
         int[] convertedMove = new int[]{bestMap.getPreviousMove()[0], bestMap.getPreviousMove()[1]};
         if(convertedMove[0] > 22) convertedMove[0] -= 23;

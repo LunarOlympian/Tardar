@@ -4,36 +4,23 @@ import com.github.lunarolympian.TaratiBot.board.BoardMap;
 import com.github.lunarolympian.TaratiBot.board.BoardUtils;
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
 import com.github.lunarolympian.TaratiBot.tardar.gametree.GameNode;
-import com.github.lunarolympian.TaratiBot.training.TardarNN;
 
 import java.io.File;
 import java.io.IOException;
 
 public class Tardar {
 
-    public static final String startingBoard =
-            ("!D3_NORMAL_BLACK!D4_NORMAL_BLACK!C8_NORMAL_BLACK!D1_NORMAL_WHITE!" +
-                    "D2_NORMAL_WHITE!C1_NORMAL_WHITE!C2_NORMAL_WHITE!B4_NORMAL_BLACK").trim(); // .trim() because I copied from console.
+    // The less memory is used the more the CPU is used.
+    public static MemoryUsage memoryUsage = MemoryUsage.MEDIUM;
 
     private BoardMap map;
-    private TardarNN tardarNN;
 
     public Tardar(BoardMap map) {
         this.map = map;
-        //this.tree = new SinkingTree(map, nn, false);
-    }
-
-    public Tardar(BoardMap map, File trdrFile) throws IOException {
-        this.map = map;
-        //this.tardarNN = new TardarNN(trdrFile);
     }
 
     public void startGame(String board, boolean white) {
         this.map = new BoardMap(board, white);
-    }
-
-    public void tardarSetNN(TardarNN nn) {
-        this.tardarNN = nn;
     }
 
     public FastBoardMap runNN(FastBoardMap map, Tardar.Difficulty difficulty) {
@@ -47,7 +34,6 @@ public class Tardar {
      * @param path The path to the file with the data.
      */
     public void tardarLoad(File path) throws IOException {
-        this.tardarNN = new TardarNN(path);
     }
 
     /**
