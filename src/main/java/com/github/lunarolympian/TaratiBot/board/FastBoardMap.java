@@ -157,17 +157,6 @@ public class FastBoardMap {
                     // Consider adding more in
                 }
 
-                // Confirms it's not a restricted move (stop fucking moving back and forth!)
-                boolean restricted = false;
-                for(byte[] restrictedMove : restrictedMoves) {
-                    if(restrictedMove[0] == validTile && restrictedMove[1] == space) {
-                        restricted = true;
-                        break;
-                    }
-                }
-
-                if(restricted) continue;
-
                 // Cool, it's valid, now it needs to make the new board
                 byte[] newBoard = new byte[9];
                 newBoard[0] = boardState[0];
@@ -400,6 +389,20 @@ public class FastBoardMap {
 
     public byte[] getPreviousMove() {
         return previousMove;
+    }
+
+    public int calculateScore() {
+        int score = 0;
+        for(int i = 1; i < 9; i++) {
+            if(i > boardState[0]) {
+                if(boardState[i] > 22) score--;
+                continue;
+            }
+
+            if(boardState[i] <= 22) score++;
+            else score += 2;
+        }
+        return score;
     }
 
     /**

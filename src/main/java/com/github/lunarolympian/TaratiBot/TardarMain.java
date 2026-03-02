@@ -13,7 +13,9 @@ public class TardarMain {
 	public static void main(String[] args) {
         tardar = new Tardar(null);
 
-        Tardar.memoryUsage = switch (args[0].trim().toLowerCase()) {
+        String memUsageArg = (args.length > 0 ? args[0] : "medium");
+
+        Tardar.memoryUsage = switch (memUsageArg.trim().toLowerCase()) {
             case "low" -> MemoryUsage.LOW;
             case "high" -> MemoryUsage.HIGH;
             default -> MemoryUsage.MEDIUM;
