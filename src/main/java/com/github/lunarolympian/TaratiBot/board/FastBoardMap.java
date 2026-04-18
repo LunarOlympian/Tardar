@@ -11,6 +11,7 @@ public class FastBoardMap {
     private byte[] previousMove = new byte[0];
     private byte[] previousOpponentMove = new byte[0];
     private byte[] flags = new byte[3]; // 0 - End state
+    private int score = -1;
 
     public FastBoardMap(BoardMap boardMap) {
         for(int i = 0; i < 9; i++) {
@@ -22,9 +23,10 @@ public class FastBoardMap {
         this.boardState = boardState;
     }
 
-    public FastBoardMap(byte[] boardState, byte[] move) {
+    public FastBoardMap(byte[] boardState, byte[] move, int score) {
         this.boardState = boardState;
         this.previousMove = move;
+        this.score = score;
     }
 
     public void setPreviousOpponentMove(byte[] previousOpponentMove) {
@@ -72,59 +74,35 @@ public class FastBoardMap {
             // First checks the number of pieces it has
             if(boardState[0] == 0) return true;
 
-            // Now it needs to check if it can make any moves.
-            byte[] occupiedMap = new byte[23];
-            for(int i = 1; i < 9; i++) {
-                int pieceTile = boardState[i] > 22 ? boardState[i] - 23 : boardState[i];
-                occupiedMap[pieceTile] = 1;
-            }
-
-            // Goes through the pieces in a board state and for each piece checks which tiles are valid moves.
-            boolean validMove = false;
             for(int i = 1; i <= boardState[0]; i++) {
-                byte space = boardState[i] > 22 ? (byte) (boardState[i] - 23) : boardState[i];
-
-                // I know this is a mess...
-                byte[] validTilesArr = boardState[i] > 22 ? BoardUtils.getNeighbouringSpacesByte(space) :
-                        (checkSelf ? BoardUtils.getForwardSpacesByte(space) : BoardUtils.getBackwardSpaces(space));
-                for (int validTile : validTilesArr) {
-                    if (occupiedMap[validTile] == 0) {
-                        validMove = true; // A move can be made
-                        break;
+                // Needs to check bordering tiles
+                int[] neighbouringSpaces = boardState[i] > 22 ? BoardUtils.getNeighbouringSpaces(boardState[i]) : BoardUtils.getForwardSpaces(boardState[i]);
+                int blockedSpaces = 0;
+                for(int space : neighbouringSpaces) {
+                    for(int j = 1; j < 9 - (neighbouringSpaces.length - 1); j++) {
+                        if(space == boardState[j]) blockedSpaces++;
                     }
                 }
-                if(validMove) break;
+                if(blockedSpaces != neighbouringSpaces.length) return false;
             }
-
-            return !validMove;
+            return true;
         }
 
         // First checks the number of pieces it has
         if(boardState[0] == 8) return true;
 
-        // Now it needs to check if it can make any moves.
-        byte[] occupiedMap = new byte[23];
-        for(int i = 1; i < 9; i++) {
-            int pieceTile = boardState[i] > 22 ? boardState[i] - 23 : boardState[i];
-            occupiedMap[pieceTile] = 1;
-        }
-
-        // Goes through the pieces in a board state and for each piece checks which tiles are valid moves.
-        boolean validMove = false;
         for(int i = boardState[0] + 1; i < 9; i++) {
-            byte space = boardState[i] > 22 ? (byte) (boardState[i] - 23) : boardState[i];
-
-            byte[] validTilesArr = boardState[i] > 22 ? BoardUtils.getNeighbouringSpacesByte(space) : BoardUtils.getBackwardSpaces(space);
-            for (int validTile : validTilesArr) {
-                if (occupiedMap[validTile] == 0) {
-                    validMove = true; // A move can be made
-                    break;
+            // Needs to check bordering tiles
+            byte[] neighbouringSpaces = boardState[i] > 22 ? BoardUtils.getNeighbouringSpacesByte(boardState[i]) : BoardUtils.getBackwardSpaces(boardState[i]);
+            int blockedSpaces = 0;
+            for(int space : neighbouringSpaces) {
+                for(int j = 1; j < 9 - (neighbouringSpaces.length - 1); j++) {
+                    if(space == boardState[j]) blockedSpaces++;
                 }
             }
-            if(validMove) break;
+            if(blockedSpaces != neighbouringSpaces.length) return false;
         }
-
-        return !validMove;
+        return true;
     }
 
     /**
@@ -161,6 +139,7 @@ public class FastBoardMap {
                 byte[] newBoard = new byte[9];
                 newBoard[0] = boardState[0];
 
+                int calculatedScore = 0;
                 // Moves the piece
                 for(int j = 1; j <= boardState[0]; j++) {
                     if(j == i) {
@@ -171,6 +150,7 @@ public class FastBoardMap {
                     }
                     else
                         newBoard[j] = boardState[j];
+                    if(newBoard[j] > 22) calculatedScore++;
                 }
 
 
@@ -178,6 +158,8 @@ public class FastBoardMap {
 
                 // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
                 // Capturing
+
+
                 int[] capturingSpaces = BoardUtils.getNeighbouringSpaces((byte) validTile);
 
                 int piecesCaptured = 0;
@@ -193,6 +175,9 @@ public class FastBoardMap {
                             {
                                 newBoard[newBoard[0] + 1 + piecesCaptured] += 23;
                             }
+
+                            if(newBoard[newBoard[0] + 1 + piecesCaptured] > 22) calculatedScore++;
+
                             piecesCaptured++;
                             captured = true;
                             break;
@@ -203,15 +188,17 @@ public class FastBoardMap {
                     if(!captured) {
                         newBoard[backwardsFillInPos] = boardState[j];
                         backwardsFillInPos--;
+                        if(boardState[j] < 23) calculatedScore--;
                     }
                 }
                 newBoard[0] += (byte) piecesCaptured;
+                calculatedScore += newBoard[0];
 
                 // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
 
                 if(limitedChecks && !limitedCheck(newBoard)) continue;
 
-                validMoves.add(new FastBoardMap(newBoard, new byte[]{boardState[i] <= 22 ? boardState[i] : (byte) (boardState[i] - 23), (byte) validTile}));
+                validMoves.add(new FastBoardMap(newBoard, new byte[]{boardState[i] <= 22 ? boardState[i] : (byte) (boardState[i] - 23), (byte) validTile}, calculatedScore));
 
             }
         }
@@ -237,11 +224,7 @@ public class FastBoardMap {
             for(byte validTile : validTilesArr) {
                 if(occupiedMap[validTile] != 0) continue;
 
-                /*
-                This has a few things to check (optimisation). Namely, it needs to weed out:
-                - Stall tactics
-                - Moving pieces into the 4 disconnected tiles
-                */
+
                 if(limitedChecks && ((validTile <= 3) ||
                         (previousOpponentMove.length > 0 &&
                         space == previousOpponentMove[1] && validTile == previousOpponentMove[0]))) continue;
@@ -250,15 +233,17 @@ public class FastBoardMap {
                 byte[] newBoard = new byte[9];
                 newBoard[0] = boardState.boardState[0];
 
+                int calculatedScore = 0;
                 // Moves the piece
                 for(int j = boardState.boardState[0] + 1; j < 9; j++) {
                     if(j == i) {
                         newBoard[j] = (byte) (validTile + (boardState.boardState[i] > 22 ? 23 : 0));
-                        if((validTile == 4 || validTile == 5) && newBoard[j] < 23)
-                            newBoard[j] += 23; // Promotions from movement
+                        if((validTile == 4 || validTile == 5) && newBoard[j] < 23) newBoard[j] += 23; // Promotions from movement
                     }
                     else
                         newBoard[j] = boardState.boardState[j];
+
+                    if(newBoard[j] > 22) calculatedScore--;
                 }
 
 
@@ -269,6 +254,7 @@ public class FastBoardMap {
 
                 int piecesCaptured = 0;
                 int forwardsFillInPos = 1;
+
                 for(int j = 1; j <= boardState.boardState[0]; j++) {
                     boolean captured = false;
                     // Checks if any of white's pieces are on a tile black is capturing
@@ -281,6 +267,8 @@ public class FastBoardMap {
                             {
                                 newBoard[newBoard[0] - piecesCaptured] += 23;
                             }
+
+                            if(newBoard[newBoard[0] - piecesCaptured] > 22) calculatedScore--;
                             piecesCaptured++;
                             captured = true;
                             break;
@@ -290,13 +278,15 @@ public class FastBoardMap {
                     // This fills in the pieces that haven't been captured.
                     if(!captured) {
                         newBoard[forwardsFillInPos] = boardState.boardState[j];
+                        if(newBoard[forwardsFillInPos] > 22) calculatedScore++;
                         forwardsFillInPos++;
                     }
                 }
                 newBoard[0] -= (byte) piecesCaptured;
+                calculatedScore += newBoard[0];
 
                 // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
-                FastBoardMap opponentMove = new FastBoardMap(newBoard, boardState.getPreviousMove());
+                FastBoardMap opponentMove = new FastBoardMap(newBoard, boardState.getPreviousMove(), calculatedScore);
                 opponentMove.setPreviousOpponentMove(new byte[]{space, validTile});
                 validMoves.add(opponentMove);
 
@@ -392,7 +382,8 @@ public class FastBoardMap {
     }
 
     public int calculateScore() {
-        int score = 0;
+        if(this.score != -1) return score;
+        this.score = 0;
         for(int i = 1; i < 9; i++) {
             if(i > boardState[0]) {
                 if(boardState[i] > 22) score--;
@@ -403,6 +394,22 @@ public class FastBoardMap {
             else score += 2;
         }
         return score;
+    }
+
+    public int calculateSelfScore() {
+        int score = 0;
+        for(int i = 1; i <= boardState[0]; i++) {
+            if(boardState[i] <= 22) score++;
+            else score += 2;
+        }
+        return score;
+    }
+
+    public boolean checkStartingPosition() {
+        for(int i = 1; i < 9; i++) {
+            if(boardState[i] > 22) return false;
+        }
+        return true;
     }
 
     /**

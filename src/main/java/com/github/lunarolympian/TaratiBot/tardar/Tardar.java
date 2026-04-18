@@ -94,6 +94,7 @@ public class Tardar {
         EASY,
         MEDIUM,
         HARD,
+        SHORT_SEARCH,
         EXPERT,
         AGI
     }

@@ -1,0 +1,9 @@
+package com.github.lunarolympian.TaratiBot.tardar.gametree;
+
+public enum NodeState {
+
+    LOSING,
+    SAFE,
+    NEUTRAL,
+    WINNING
+}
