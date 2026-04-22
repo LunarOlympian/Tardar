@@ -105,6 +105,8 @@ public class GameNode {
 
     private static long nodeCounter = 0;
 
+    public ABStatus abStatus = ABStatus.NORMAL;
+
     public GameNode(FastBoardMap map) {
         this.map = map;
         this.children = new LinkedHashMap<>();
@@ -118,10 +120,15 @@ public class GameNode {
         switch (assessmentDifficulty) {
             case EASY -> searchDepth = 1;
             case MEDIUM -> searchDepth = 2;
-            case HARD -> searchDepth = 3;
+            case HARD -> searchDepth = 4;
             case EXPERT -> searchDepth = 6;
             case AGI -> searchDepth = 7;
         }
+
+        Tardar.Difficulty shortSearchDifficulty = switch (assessmentDifficulty) {
+            case EXPERT, AGI -> Tardar.Difficulty.SHORT_SEARCH;
+            default -> assessmentDifficulty;
+        };
 
         long startTime = System.currentTimeMillis();
 
@@ -163,7 +170,9 @@ public class GameNode {
             double safetyScore = 0d;
 
             for (GameNode node : gameNodes) {
-                node.buildTree(startTime + timer, Math.clamp(searchDepth, 1, 4), false, tardarChoice, Tardar.Difficulty.SHORT_SEARCH, opponentState.calculateScore(), 0);
+                node.buildTree(startTime + timer, Math.clamp(searchDepth, 1, 4), true, minScore, shortSearchDifficulty, 0);
+
+                if(node.abStatus == ABStatus.BETA_PRUNED) continue;
 
                 if (node.nodeState == NodeState.LOSING) {
                     losingStates.add(opponentState);
@@ -217,9 +226,10 @@ public class GameNode {
             orderedShortSearch.addAll(optimalOSS);
         }
 
-        System.out.println("    " + safetyScores.get(orderedShortSearch.getFirst()) + " " + scores.get(orderedShortSearch.getFirst()));
+        System.out.println("    " + safetyScores.get(optimalOSS.getFirst()) + " " + scores.get(optimalOSS.getFirst()));
 
         if (moves.size() == 1) {
+            System.out.println("    Move processing complete.");
             return new ArrayList<>(moves.keySet()).getFirst();
         }
 
@@ -241,8 +251,6 @@ public class GameNode {
         int startingScore = this.map.calculateScore();
         if (startingScore < 4) startingScore = 0;
 
-        int scoreCutoff = startingScore - 3;
-        if (this.map.checkStartingPosition()) scoreCutoff = startingScore - 2;
 
         ArrayList<FastBoardMap> prunedList = new ArrayList<>();
         FastBoardMap currentOptimalMove = null;
@@ -257,10 +265,9 @@ public class GameNode {
 
             boolean allSafe = true;
 
-            int tardarMin = 99;
             for (GameNode node : gameNodes) {
                 double[] nodeInfo = new double[3];
-                node.buildTree(timer, searchDepth, false, tardarMin, assessmentDifficulty, opponentState.calculateScore(), scoreCutoff);
+                node.buildTree(timer, searchDepth, false, 0, assessmentDifficulty, 0);
                 nodeInfo[1] = node.safetyScore;
 
                 int guaranteedPieces = node.getGuaranteedPieces();
@@ -269,9 +276,11 @@ public class GameNode {
                 opponentStateInfo.add(nodeInfo);
 
                 if (node.nodeState == NodeState.LOSING) {
-                    pruned = true;
                     prunedList.add(opponentState);
-                } else if (node.nodeState == NodeState.WINNING) {
+                    allSafe = false;
+                    break;
+                }
+                else if (node.nodeState == NodeState.WINNING) {
                     winningStates++;
                 }
                 if (node.nodeState != NodeState.SAFE) {
@@ -301,14 +310,7 @@ public class GameNode {
                 return opponentState;
             }
 
-            if (!pruned && (assessmentDifficulty == Tardar.Difficulty.EXPERT || assessmentDifficulty == Tardar.Difficulty.AGI)) {
-                if (currentOptimalMove == null) currentOptimalMove = opponentState;
-
-                if (timer - 180_000 < System.currentTimeMillis()) {
-                    System.out.println("    Move processing complete.");
-                    return currentOptimalMove;
-                }
-            }
+            currentOptimalMove = opponentState;
 
             moveInfo.put(opponentState, opponentStateInfo);
         }
@@ -357,6 +359,7 @@ public class GameNode {
         }
 
 
+
         System.out.println("    Move processing complete.");
         return moveOptions.getLast();
     }
@@ -370,14 +373,12 @@ public class GameNode {
      *
      * @param timer       When it should stop assessing branches.
      * @param maxDepth    How deep it should go assessing branches.
-     * @param scoreCutoff The minimum score before Tardar considers the branch lost and moves on
      */
-    private void buildTree(long timer, int maxDepth, boolean enableAB, int beta, Tardar.Difficulty difficulty, int previousOptions, int scoreCutoff) {
+    private void buildTree(long timer, int maxDepth, boolean enableAB, int beta, Tardar.Difficulty difficulty, int previousOptions) {
         if (System.currentTimeMillis() > timer || maxDepth <= 0) {
             if (System.currentTimeMillis() > timer ||
                     ((previousOptions > 60 || maxDepth == -2) && (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI)) ||
-                    ((previousOptions > 40 || maxDepth == -1) && difficulty == Tardar.Difficulty.SHORT_SEARCH) ||
-                    (difficulty != Tardar.Difficulty.EXPERT && difficulty != Tardar.Difficulty.AGI && difficulty != Tardar.Difficulty.SHORT_SEARCH)
+                    (difficulty != Tardar.Difficulty.EXPERT && difficulty != Tardar.Difficulty.AGI)
             ) {
                 this.nodeState = NodeState.SAFE;
                 this.score = this.map.calculateScore();
@@ -437,32 +438,35 @@ public class GameNode {
 
         // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
         // Expands the children
-        climbTree(timer, maxDepth, possibleMoves, enableAB, beta, difficulty, previousOptions, scoreCutoff);
+        climbTree(timer, maxDepth, possibleMoves, enableAB, beta, difficulty, previousOptions);
         // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
     }
 
-    private void climbTree(long timer, int maxDepth, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> possibleMoves, boolean enableAB, int beta, Tardar.Difficulty difficulty, int previousOptions, int scoreCutoff) {
+    private void climbTree(long timer, int maxDepth, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> possibleMoves, boolean enableAB, int prevOpponentChoice, Tardar.Difficulty difficulty, int previousOptions) {
+        boolean safetyCheck = difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI;
+
         ArrayList<FastBoardMap> losingStates = new ArrayList<>();
 
-        int tardarMaxScore = -99;
-        boolean abPruned = false;
+        int tardarChoice = prevOpponentChoice;
 
         for (FastBoardMap opponentState : possibleMoves.keySet()) {
             int opponentLosingStates = 0;
-            int tardarMinScore = 99;
+            int opponentChoice = 99;
 
             float tempSafetyScore = 0;
             boolean losingState = false;
 
             boolean allSafe = true;
 
+            boolean abPruned = false;
+
             for (GameNode opponentOption : children.get(opponentState)) {
-                opponentOption.buildTree(timer, maxDepth - 1, false, tardarMinScore, difficulty, previousOptions + possibleMoves.size() + children.get(opponentState).size(), scoreCutoff);
+                opponentOption.buildTree(timer, maxDepth - 1, enableAB, opponentChoice, difficulty, previousOptions + possibleMoves.size() + children.get(opponentState).size());
 
-                if (opponentOption.getNodeState() != NodeState.SAFE) allSafe = false;
-
-                safetyScore += opponentOption.safetyScore;
-                this.safetyScoreCount += opponentOption.safetyScoreCount;
+                if (opponentOption.nodeState == NodeState.WINNING) {
+                    opponentLosingStates++;
+                    continue;
+                }
 
                 if (opponentOption.nodeState == NodeState.LOSING) {
                     this.safetyScore -= 5f;
@@ -471,34 +475,30 @@ public class GameNode {
                     break; // No point in digging further into a losing state
                 }
 
-                if (opponentOption.nodeState == NodeState.WINNING) {
-                    opponentLosingStates++;
-                }
+                if(opponentOption.abStatus == ABStatus.BETA_PRUNED) continue;
+
+                if (opponentOption.getNodeState() != NodeState.SAFE) allSafe = false;
+
+                safetyScore += opponentOption.safetyScore;
+                this.safetyScoreCount += opponentOption.safetyScoreCount;
+
+
 
                 tempSafetyScore += opponentOption.getMap().calculateScore() / 20f;
 
-                int guaranteedPieceScore = opponentOption.getGuaranteedPieces();
+                int guaranteedPieceScore = opponentOption.score;
 
-                // This checks if the min is below the next max layer
-                if (enableAB && guaranteedPieceScore < tardarMinScore) {
-                    tardarMinScore = guaranteedPieceScore;
-                    if (tardarMinScore < tardarMaxScore) {
+                // This checks if the opponent would choose something which guarantees a lower piece count than Tardar can guarantee
+                if (enableAB && guaranteedPieceScore < opponentChoice) {
+                    opponentChoice = guaranteedPieceScore;
+                    if (opponentChoice < tardarChoice) {
                         abPruned = true;
                         break;
                     }
                 }
             }
 
-            if (abPruned) continue;
-
-            if (enableAB && tardarMaxScore < tardarMinScore) {
-                tardarMaxScore = tardarMinScore;
-                if (tardarMaxScore < beta) return;
-            }
-
-            if (!losingState) {
-                this.safetyScore += tempSafetyScore / children.get(opponentState).size();
-            }
+            if (abPruned || losingState) continue;
 
             // Checks if all of its opponent's options win the game for Tardar
             if (opponentLosingStates == children.get(opponentState).size()) {
@@ -508,7 +508,21 @@ public class GameNode {
                 return; // As it has a winning move it doesn't need to bother checking anything else.
             }
 
-            if (allSafe && (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI)) {
+            if (enableAB && tardarChoice < opponentChoice) {
+                tardarChoice = opponentChoice;
+                if (tardarChoice < prevOpponentChoice) {
+                    abStatus = ABStatus.BETA_PRUNED;
+                    return;
+                }
+            }
+
+            if (!losingState) {
+                this.safetyScore += tempSafetyScore / children.get(opponentState).size();
+            }
+
+
+
+            if (allSafe && safetyCheck) {
                 this.nodeState = NodeState.SAFE;
                 if (maxDepth != 0) manageChildren(maxDepth);
                 return;
@@ -516,6 +530,7 @@ public class GameNode {
         }
 
         safetyScore /= safetyScoreCount; // Averages the children's scores
+        this.score = tardarChoice;
 
         for (FastBoardMap losingState : losingStates) children.remove(losingState);
         if (children.isEmpty()) this.nodeState = NodeState.LOSING;
