@@ -170,7 +170,7 @@ public class GameNode {
             double safetyScore = 0d;
 
             for (GameNode node : gameNodes) {
-                node.buildTree(startTime + timer, Math.clamp(searchDepth, 1, 4), true, minScore, shortSearchDifficulty, 0);
+                node.buildTree(startTime + timer, Math.clamp(searchDepth, 1, 4), true, minScore, shortSearchDifficulty, false);
 
                 if(node.abStatus == ABStatus.BETA_PRUNED) continue;
 
@@ -178,6 +178,7 @@ public class GameNode {
                     losingStates.add(opponentState);
                 } else if (node.nodeState == NodeState.WINNING) {
                     winningStates++;
+                    continue;
                 }
 
                 if (minScore > node.score) {
@@ -229,7 +230,7 @@ public class GameNode {
         System.out.println("    " + safetyScores.get(optimalOSS.getFirst()) + " " + scores.get(optimalOSS.getFirst()));
 
         if (moves.size() == 1) {
-            System.out.println("    Move processing complete.");
+            System.out.println("    Move processing complete. Only one choice.");
             return new ArrayList<>(moves.keySet()).getFirst();
         }
 
@@ -257,7 +258,6 @@ public class GameNode {
 
         for (FastBoardMap opponentState : orderedShortSearch) {
             ArrayList<GameNode> gameNodes = new ArrayList<>();
-            boolean pruned = false;
             int winningStates = 0;
 
             for (FastBoardMap opponentOption : moves.get(opponentState)) gameNodes.add(new GameNode(opponentOption));
@@ -267,12 +267,12 @@ public class GameNode {
 
             for (GameNode node : gameNodes) {
                 double[] nodeInfo = new double[3];
-                node.buildTree(timer, searchDepth, false, 0, assessmentDifficulty, 0);
+                node.buildTree(timer, searchDepth, false, 0, assessmentDifficulty, false);
                 nodeInfo[1] = node.safetyScore;
 
-                int guaranteedPieces = node.getGuaranteedPieces();
+                //int guaranteedPieces = node.getGuaranteedPieces();
 
-                nodeInfo[2] = guaranteedPieces;
+                //nodeInfo[2] = guaranteedPieces;
                 opponentStateInfo.add(nodeInfo);
 
                 if (node.nodeState == NodeState.LOSING) {
@@ -282,6 +282,7 @@ public class GameNode {
                 }
                 else if (node.nodeState == NodeState.WINNING) {
                     winningStates++;
+                    continue;
                 }
                 if (node.nodeState != NodeState.SAFE) {
                     allSafe = false;
@@ -290,37 +291,21 @@ public class GameNode {
                 }
             }
 
-            if (allSafe) {
-                System.out.println("    Move processing complete.");
-                return opponentState;
-            } else {
-                System.out.println("    Skipped!");
-            }
-
-            //if(enableAB && tardarMin > tardarMax) {
-            //tardarMax = tardarMin;
-            //}
-
-            opponentStateInfo.sort(Comparator.comparingDouble(o -> o[2])); // Useful a bit later
-
-
             // Found a winner
             if (winningStates == gameNodes.size()) {
                 System.out.println("    Move processing complete. " + taunts[(int) (Math.random() * taunts.length)]);
                 return opponentState;
             }
 
-            currentOptimalMove = opponentState;
-
-            moveInfo.put(opponentState, opponentStateInfo);
+            if (allSafe) {
+                System.out.println("    Move processing complete.");
+                return opponentState;
+            } else {
+                System.out.println("    Skipped!");
+            }
         }
 
         if (System.currentTimeMillis() > timer) System.out.println("    Time is up!");
-
-        if (currentOptimalMove != null) {
-            System.out.println("    Move processing complete.");
-            return currentOptimalMove;
-        }
 
         // This prevents Tardar from throwing the game if it spots a loss.
         if (prunedList.size() != moveInfo.size()) {
@@ -374,17 +359,12 @@ public class GameNode {
      * @param timer       When it should stop assessing branches.
      * @param maxDepth    How deep it should go assessing branches.
      */
-    private void buildTree(long timer, int maxDepth, boolean enableAB, int beta, Tardar.Difficulty difficulty, int previousOptions) {
-        if (System.currentTimeMillis() > timer || maxDepth <= 0) {
-            if (System.currentTimeMillis() > timer ||
-                    ((previousOptions > 60 || maxDepth == -2) && (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI)) ||
-                    (difficulty != Tardar.Difficulty.EXPERT && difficulty != Tardar.Difficulty.AGI)
-            ) {
-                this.nodeState = NodeState.SAFE;
-                this.score = this.map.calculateScore();
-                this.safetyScoreCount = 1;
-                return;
-            }
+    private void buildTree(long timer, int maxDepth, boolean enableAB, int beta, Tardar.Difficulty difficulty, boolean extendSearch) {
+        if (!extendSearch && (System.currentTimeMillis() > timer || maxDepth <= 0)) {
+            this.nodeState = NodeState.SAFE;
+            this.score = this.map.calculateScore();
+            this.safetyScoreCount = 1;
+            return;
         }
 
         // Builds the tree
@@ -438,11 +418,11 @@ public class GameNode {
 
         // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
         // Expands the children
-        climbTree(timer, maxDepth, possibleMoves, enableAB, beta, difficulty, previousOptions);
+        climbTree(timer, maxDepth, possibleMoves, enableAB, beta, difficulty);
         // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
     }
 
-    private void climbTree(long timer, int maxDepth, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> possibleMoves, boolean enableAB, int prevOpponentChoice, Tardar.Difficulty difficulty, int previousOptions) {
+    private void climbTree(long timer, int maxDepth, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> possibleMoves, boolean enableAB, int prevOpponentChoice, Tardar.Difficulty difficulty) {
         boolean safetyCheck = difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI;
 
         ArrayList<FastBoardMap> losingStates = new ArrayList<>();
@@ -460,8 +440,12 @@ public class GameNode {
 
             boolean abPruned = false;
 
+            boolean extendSearch = (children.get(opponentState).size() < 4 && maxDepth >= -2 && (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI)) ||
+                    (children.get(opponentState).size() < 4 && maxDepth > -1 && difficulty == Tardar.Difficulty.SHORT_SEARCH);
+
+
             for (GameNode opponentOption : children.get(opponentState)) {
-                opponentOption.buildTree(timer, maxDepth - 1, enableAB, opponentChoice, difficulty, previousOptions + possibleMoves.size() + children.get(opponentState).size());
+                opponentOption.buildTree(timer, maxDepth - 1, enableAB, opponentChoice, difficulty, extendSearch);
 
                 if (opponentOption.nodeState == NodeState.WINNING) {
                     opponentLosingStates++;
@@ -503,8 +487,7 @@ public class GameNode {
             // Checks if all of its opponent's options win the game for Tardar
             if (opponentLosingStates == children.get(opponentState).size()) {
                 this.nodeState = NodeState.WINNING;
-                if (maxDepth != 0)
-                    manageChildren(maxDepth);
+                manageChildren(maxDepth);
                 return; // As it has a winning move it doesn't need to bother checking anything else.
             }
 
@@ -516,10 +499,7 @@ public class GameNode {
                 }
             }
 
-            if (!losingState) {
-                this.safetyScore += tempSafetyScore / children.get(opponentState).size();
-            }
-
+            this.safetyScore += tempSafetyScore / children.get(opponentState).size();
 
 
             if (allSafe && safetyCheck) {
