@@ -1,7 +1,6 @@
 package com.github.lunarolympian.TaratiBot.tardar.gametree;
 
 import com.github.lunarolympian.TaratiBot.board.FastBoardMap;
-import com.github.lunarolympian.TaratiBot.tardar.MemoryUsage;
 import com.github.lunarolympian.TaratiBot.tardar.Tardar;
 
 import java.util.*;
@@ -156,7 +155,7 @@ public class GameNode {
         // Checks for any quick victories or losses
         HashSet<FastBoardMap> losingStates = new HashSet<>();
         HashMap<FastBoardMap, Double> safetyScores = new HashMap<>();
-        HashMap<FastBoardMap, Integer> scores = new HashMap<>();
+        HashMap<FastBoardMap, Double> scores = new HashMap<>();
 
         int tardarChoice = -99;
 
@@ -170,7 +169,7 @@ public class GameNode {
             double safetyScore = 0d;
 
             for (GameNode node : gameNodes) {
-                node.buildTree(startTime + timer, Math.clamp(searchDepth, 1, 4), true, minScore, shortSearchDifficulty, false);
+                node.buildTree(startTime + timer, Math.clamp(searchDepth, 1, 4), false, minScore, shortSearchDifficulty, false);
 
                 if(node.abStatus == ABStatus.BETA_PRUNED) continue;
 
@@ -203,7 +202,7 @@ public class GameNode {
             }
 
             safetyScores.put(opponentState, safetyScore);
-            scores.put(opponentState, minScore);
+            scores.put(opponentState, minScore + handleScoreOffset(opponentState));
         }
         if (losingStates.size() != moves.size()) {
             losingStates.forEach(moves::remove);
@@ -242,11 +241,11 @@ public class GameNode {
             return optimalOSS.getFirst();
         }
 
-        return getAdvancedSearch(assessmentDifficulty, orderedShortSearch, moves, timer, moveInfo);
+        return runAdvancedSearch(assessmentDifficulty, orderedShortSearch, moves, timer, moveInfo);
 
     }
 
-    private FastBoardMap getAdvancedSearch(Tardar.Difficulty assessmentDifficulty, ArrayList<FastBoardMap> orderedShortSearch, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> moves, long timer, Map<FastBoardMap, ArrayList<double[]>> moveInfo) {
+    private FastBoardMap runAdvancedSearch(Tardar.Difficulty assessmentDifficulty, ArrayList<FastBoardMap> orderedShortSearch, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> moves, long timer, Map<FastBoardMap, ArrayList<double[]>> moveInfo) {
         nodeCounter = 0;
 
         int startingScore = this.map.calculateScore();
@@ -270,9 +269,6 @@ public class GameNode {
                 node.buildTree(timer, searchDepth, false, 0, assessmentDifficulty, false);
                 nodeInfo[1] = node.safetyScore;
 
-                //int guaranteedPieces = node.getGuaranteedPieces();
-
-                //nodeInfo[2] = guaranteedPieces;
                 opponentStateInfo.add(nodeInfo);
 
                 if (node.nodeState == NodeState.LOSING) {
@@ -440,7 +436,7 @@ public class GameNode {
 
             boolean abPruned = false;
 
-            boolean extendSearch = (children.get(opponentState).size() < 4 && maxDepth >= -2 && (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI)) ||
+            boolean extendSearch = (children.get(opponentState).size() < 3 && maxDepth > -1 && (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI)) ||
                     (children.get(opponentState).size() < 4 && maxDepth > -1 && difficulty == Tardar.Difficulty.SHORT_SEARCH);
 
 
@@ -495,6 +491,7 @@ public class GameNode {
                 tardarChoice = opponentChoice;
                 if (tardarChoice < prevOpponentChoice) {
                     abStatus = ABStatus.BETA_PRUNED;
+                    this.manageChildren(maxDepth);
                     return;
                 }
             }
@@ -518,10 +515,23 @@ public class GameNode {
             manageChildren(maxDepth);
     }
 
-    private boolean checkScoreCutoff(int scoreCutoff) {
-        /*int boardScore = this.map.calculateSelfScore();
-        return boardScore <= scoreCutoff;*/
-        return false;
+    private double handleScoreOffset(FastBoardMap move) {
+        // Offsets scores depending on the immediate move performed
+
+        // Capturing pieces increases score by 0.1 (0.2 for Rocs)
+        double scoreOffset = (move.calculateScore() - this.map.calculateScore()) / 10d;
+
+        for(int i = 1; i <= move.getGameState()[0]; i++) {
+            switch (move.getGameState()[i]) {
+                case 7, 8, 13, 14 -> scoreOffset -= 0.2;
+                case 0, 1 -> scoreOffset -= 0.05;
+                case 25, 26, 33, 34 -> scoreOffset -= 0.1;
+            }
+        }
+
+        scoreOffset += Math.random() * 0.05;
+
+        return Math.clamp(scoreOffset, -1, 1);
     }
 
     /**
@@ -562,15 +572,7 @@ public class GameNode {
 
         // Now it needs to clear the children and call the GC
 
-        if (Tardar.memoryUsage == MemoryUsage.LOW) {
-            this.children.clear();
-        } else if (Tardar.memoryUsage == MemoryUsage.MEDIUM) {
-            if ((currentDepth == 5) && nodeCounter != 0)
-                this.releaseChildren();
-        } else if (Tardar.memoryUsage == MemoryUsage.HIGH) {
-            if ((currentDepth == 4) && nodeCounter != 0)
-                this.releaseChildren();
-        }
+        this.children.clear();
     }
 
     private void releaseChildren() {

@@ -213,7 +213,7 @@ public class FastBoardMap {
         byte[] occupiedMap = new byte[23];
         for(int i = 1; i < 9; i++) {
             int pieceTile = boardState.boardState[i] > 22 ? boardState.boardState[i] - 23 : boardState.boardState[i];
-            occupiedMap[pieceTile] = 1;
+            occupiedMap[pieceTile] = (byte) i;
         }
 
         // Goes through the pieces in a board state and for each piece checks which tiles are valid moves.
@@ -224,74 +224,81 @@ public class FastBoardMap {
             for(byte validTile : validTilesArr) {
                 if(occupiedMap[validTile] != 0) continue;
 
-
-                if(limitedChecks && ((validTile <= 3) ||
-                        (previousOpponentMove.length > 0 &&
-                        space == previousOpponentMove[1] && validTile == previousOpponentMove[0]))) continue;
+                byte[] prevBoardState = Arrays.copyOf(boardState.boardState, 9);
 
                 // Cool, it's valid, now it needs to make the new board
                 byte[] newBoard = new byte[9];
                 newBoard[0] = boardState.boardState[0];
 
                 int calculatedScore = 0;
+                // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
                 // Moves the piece
-                for(int j = boardState.boardState[0] + 1; j < 9; j++) {
-                    if(j == i) {
-                        newBoard[j] = (byte) (validTile + (boardState.boardState[i] > 22 ? 23 : 0));
-                        if((validTile == 4 || validTile == 5) && newBoard[j] < 23) newBoard[j] += 23; // Promotions from movement
-                    }
-                    else
-                        newBoard[j] = boardState.boardState[j];
-
-                    if(newBoard[j] > 22) calculatedScore--;
+                // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+                int opponentStartPos = boardState.boardState[0] + 1;
+                newBoard[opponentStartPos] = (byte) (validTile + (boardState.boardState[i] > 22 ? 23 : 0));
+                if((validTile == 4 || validTile == 5) && newBoard[opponentStartPos] < 23) {
+                    newBoard[opponentStartPos] += 23; // Promotions from movement
+                    calculatedScore++;
                 }
 
 
                 // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
                 // Capturing
                 // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
-                int[] capturingSpaces = BoardUtils.getNeighbouringSpaces((byte) validTile);
+                int[] capturingSpaces = BoardUtils.getNeighbouringSpaces(validTile);
 
                 int piecesCaptured = 0;
-                int forwardsFillInPos = 1;
 
-                for(int j = 1; j <= boardState.boardState[0]; j++) {
-                    boolean captured = false;
-                    // Checks if any of white's pieces are on a tile black is capturing
-                    for (int capturingSpace : capturingSpaces) {
-                        // This is very similar to the friendly one, but it's more or less reversed
-                        if (boardState.boardState[j] == capturingSpace || boardState.boardState[j] - 23 == capturingSpace) {
-                            newBoard[newBoard[0] - piecesCaptured] = boardState.boardState[j];
-                            if(boardState.boardState[j] == 0 || boardState.boardState[j] == 1 ||
-                                    boardState.boardState[j] == 4 || boardState.boardState[j] == 5)
-                            {
-                                newBoard[newBoard[0] - piecesCaptured] += 23;
-                            }
+                for(int capturingSpace : capturingSpaces) {
+                    // Checks if it's either empty or a friendly piece
+                    if(occupiedMap[capturingSpace] == 0 || occupiedMap[capturingSpace] > prevBoardState[0]) continue;
 
-                            if(newBoard[newBoard[0] - piecesCaptured] > 22) calculatedScore--;
-                            piecesCaptured++;
-                            captured = true;
-                            break;
+                    // It's an opponent's piece, so it's being captured
+                    int capturedPiecePos = occupiedMap[capturingSpace];
+
+                    // Promotions on capture
+                    int capturedPieceValue = switch (prevBoardState[capturedPiecePos]) {
+                        case 0 -> 23;
+                        case 1 -> 24;
+                        case 4 -> 27;
+                        case 5 -> 28;
+                        default -> prevBoardState[capturedPiecePos];
+                    };
+
+                    if(capturedPieceValue > 22) calculatedScore--;
+
+                    newBoard[(prevBoardState[0] + 1) - (piecesCaptured + 1)] = (byte) capturedPieceValue;
+
+                    prevBoardState[capturedPiecePos] = -1;
+                    piecesCaptured++;
+                }
+
+                newBoard[0] -= (byte) piecesCaptured;
+
+                prevBoardState[prevBoardState[0] + 1] = (byte) -1;
+
+                int fillInPos = 1;
+                boolean tardarPieces = true;
+                for(int j = 1; j < 9; j++) {
+                    if(prevBoardState[j] != (byte) -1) {
+                        newBoard[fillInPos] = prevBoardState[j];
+
+                        if(tardarPieces && newBoard[fillInPos] > 22) calculatedScore++;
+                        else if(!tardarPieces && newBoard[fillInPos] > 22) calculatedScore--;
+                        fillInPos++;
+                        if(fillInPos == newBoard[0] + 1) {
+                            fillInPos += 1 + piecesCaptured;
+                            tardarPieces = false;
                         }
-                    }
 
-                    // This fills in the pieces that haven't been captured.
-                    if(!captured) {
-                        newBoard[forwardsFillInPos] = boardState.boardState[j];
-                        if(newBoard[forwardsFillInPos] > 22) calculatedScore++;
-                        forwardsFillInPos++;
                     }
                 }
-                newBoard[0] -= (byte) piecesCaptured;
-                calculatedScore += newBoard[0];
 
+                calculatedScore += newBoard[0];
                 // -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
                 FastBoardMap opponentMove = new FastBoardMap(newBoard, boardState.getPreviousMove(), calculatedScore);
                 opponentMove.setPreviousOpponentMove(new byte[]{space, validTile});
                 validMoves.add(opponentMove);
-
-
-
             }
         }
 
