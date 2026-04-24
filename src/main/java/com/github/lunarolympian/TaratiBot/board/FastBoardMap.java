@@ -275,7 +275,7 @@ public class FastBoardMap {
 
                 newBoard[0] -= (byte) piecesCaptured;
 
-                prevBoardState[prevBoardState[0] + 1] = (byte) -1;
+                prevBoardState[i] = (byte) -1;
 
                 int fillInPos = 1;
                 boolean tardarPieces = true;
