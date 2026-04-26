@@ -221,7 +221,8 @@ public class GameNode {
             }
 
             safetyScores.put(opponentState, safetyScore);
-            scores.put(opponentState, minScore + handleScoreOffset(opponentState));
+            double scoreOffset = assessmentDifficulty == Tardar.Difficulty.EASY ? 0d : handleScoreOffset(opponentState);
+            scores.put(opponentState, minScore + scoreOffset);
         }
         if (losingStates.size() != moves.size()) {
             losingStates.forEach(moves::remove);
