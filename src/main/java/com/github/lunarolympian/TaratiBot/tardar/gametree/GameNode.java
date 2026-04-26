@@ -125,6 +125,8 @@ public class GameNode {
             case AGI -> searchDepth = 7;
         }
 
+        nodeCounter = 0;
+
         Tardar.Difficulty shortSearchDifficulty = switch (assessmentDifficulty) {
             case EXPERT, AGI -> Tardar.Difficulty.SHORT_SEARCH;
             default -> assessmentDifficulty;
@@ -164,15 +166,17 @@ public class GameNode {
         orderedMoves.sort(Comparator.comparingInt(move -> moves.get(move).size()));
 
         int shortSearchDepth = Math.clamp(searchDepth, 1, 4);
-        int rokCount = 0;
+        int rocCount = 0;
         for(int i = 1; i < 9; i++) {
-            if(map.getGameState()[i] > 22) rokCount++;
+            if(map.getGameState()[i] > 22) rocCount++;
         }
 
-        if(rokCount >= 6 && map.getGameState()[0] <= 6 && assessmentDifficulty == Tardar.Difficulty.EXPERT) {
+        if(rocCount >= 5 && map.getGameState()[0] <= 6 && assessmentDifficulty == Tardar.Difficulty.EXPERT) {
             System.out.println("    Shortening search depth to increase speed.");
             shortSearchDepth = 3;
         }
+
+        if(rocCount == 0 && assessmentDifficulty == Tardar.Difficulty.EXPERT) searchDepth = 7; // Might as well search deeper if it can afford it.
 
         for (FastBoardMap opponentState : orderedMoves) {
             ArrayList<GameNode> gameNodes = new ArrayList<>();
@@ -222,8 +226,10 @@ public class GameNode {
         if (losingStates.size() != moves.size()) {
             losingStates.forEach(moves::remove);
             orderedShortSearch.removeAll(losingStates);
-        } else
+        } else {
             System.out.println("    Move processing complete. " + (assessmentDifficulty != Tardar.Difficulty.AGI ? "Up the difficulty, coward!" : "The game was rigged against me!"));
+            return orderedShortSearch.getLast();
+        }
 
         // Should be able to afford an extra-deep search now. Just want to pick the nodes to perform it on.
         orderedShortSearch.sort(Comparator.comparingDouble(scores::get));
@@ -240,7 +246,7 @@ public class GameNode {
                 assessmentDifficulty == Tardar.Difficulty.MEDIUM ||
                 assessmentDifficulty == Tardar.Difficulty.HARD)
         {
-            System.out.println("    Move processing complete!");
+            System.out.println("    Move processing complete.");
             return orderedShortSearch.getFirst();
         }
 
@@ -249,14 +255,8 @@ public class GameNode {
     }
 
     private FastBoardMap runAdvancedSearch(Tardar.Difficulty assessmentDifficulty, ArrayList<FastBoardMap> orderedShortSearch, LinkedHashMap<FastBoardMap, ArrayList<FastBoardMap>> moves, long timer, Map<FastBoardMap, ArrayList<double[]>> moveInfo) {
-        nodeCounter = 0;
-
-        int startingScore = this.map.calculateScore();
-        if (startingScore < 4) startingScore = 0;
-
 
         ArrayList<FastBoardMap> prunedList = new ArrayList<>();
-        FastBoardMap currentOptimalMove = null;
 
         for (FastBoardMap opponentState : orderedShortSearch) {
             ArrayList<GameNode> gameNodes = new ArrayList<>();
@@ -292,11 +292,27 @@ public class GameNode {
 
             // Found a winner
             if (winningStates == gameNodes.size()) {
+                int charPos = 0;
+                char[] nodeCounterArr = String.valueOf(nodeCounter).toCharArray();
+                StringBuilder nodeCounterString = new StringBuilder();
+                for (int i = nodeCounterArr.length - 1; i >= 0; i--) {
+                    nodeCounterString.insert(0, nodeCounterArr[i] + (charPos % 3 == 0 && charPos != 0 ? "," : ""));
+                    charPos++;
+                }
+                System.out.println("    Checked " + nodeCounterString + " nodes!");
                 System.out.println("    Move processing complete. " + taunts[(int) (Math.random() * taunts.length)]);
                 return opponentState;
             }
 
             if (allSafe) {
+                int charPos = 0;
+                char[] nodeCounterArr = String.valueOf(nodeCounter).toCharArray();
+                StringBuilder nodeCounterString = new StringBuilder();
+                for (int i = nodeCounterArr.length - 1; i >= 0; i--) {
+                    nodeCounterString.insert(0, nodeCounterArr[i] + (charPos % 3 == 0 && charPos != 0 ? "," : ""));
+                    charPos++;
+                }
+                System.out.println("    Checked " + nodeCounterString + " nodes!");
                 System.out.println("    Move processing complete.");
                 return opponentState;
             } else {
@@ -442,8 +458,8 @@ public class GameNode {
 
             boolean abPruned = false;
 
-            boolean extendSearch = (children.get(opponentState).size() < 3 && maxDepth > -1 && (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI)); //||
-                    //(children.get(opponentState).size() < 4 && maxDepth > -1 && difficulty == Tardar.Difficulty.SHORT_SEARCH);
+            boolean extendSearch = (children.get(opponentState).size() < 4 && maxDepth > -1 &&
+                    (difficulty == Tardar.Difficulty.EXPERT || difficulty == Tardar.Difficulty.AGI));
 
 
             for (GameNode opponentOption : children.get(opponentState)) {
@@ -529,14 +545,27 @@ public class GameNode {
         // Capturing pieces increases score by 0.1 (0.2 for Rocs)
         double scoreOffset = (move.calculateScore() - this.map.calculateScore()) / 10d;
 
+        int rocsOnDomesticTiles = 0;
         for(int i = 1; i <= move.getGameState()[0]; i++) {
             switch (move.getGameState()[i]) {
-                case 7, 8, 13, 14 -> scoreOffset -= 0.2;
-                case 0, 1 -> scoreOffset -= 0.05;
-                case 4, 5 -> scoreOffset -= 0.03;
-                case 25, 26, 33, 34 -> scoreOffset -= 0.06;
+                case 7, 8, 13, 14 -> scoreOffset -= 0.2; // Cobs on side tiles.
+                case 0, 1 -> scoreOffset -= 0.05; // Undeveloped cobs on D tiles
+                case 4, 5 -> scoreOffset -= 0.03; // Undeveloped cobs on C domestic tiles
+                case 25, 26, 33, 34 -> rocsOnDomesticTiles++; // Rocs huddling in the opponent's domestic tiles
             }
         }
+
+        int rocDifference = 0;
+        for(int i = 1; i < 9; i++) {
+            if(this.map.getGameState()[i] > 22) rocDifference--;
+            if(move.getGameState()[i] > 22) rocDifference++;
+        }
+
+        if(rocDifference == 1) scoreOffset += 0.2; // Promotions are good! Stop stalling it out!
+
+        // Only does the Roc penalty if the score hasn't changed to prevent it messing with promotion
+        if (move.calculateScore() == this.map.calculateScore() && rocsOnDomesticTiles > 2)
+            scoreOffset -= (-0.06 * rocsOnDomesticTiles);
 
         scoreOffset += Math.random() * 0.05;
 
@@ -548,38 +577,6 @@ public class GameNode {
      * Essential to going to depths > 6
      */
     private void manageChildren(int currentDepth) {
-        // First it needs to get the best achievable score from the children
-        int opponentOptionScore = 0;
-        FastBoardMap bestTardarOption = null;
-        int nodeCount = 0;
-
-        int tardarChoice = 0;
-
-        /*for (FastBoardMap tardarOption : children.keySet()) {
-            // This is essentially getting the maximum of the minimums
-            int opponentChoice = 99;
-            for (GameNode opponentOption : children.get(tardarOption)) {
-                int ooScore = opponentOption.getMap().calculateScore();
-                if (ooScore < opponentChoice) {
-                    opponentChoice = ooScore;
-                }
-
-                nodeCount++;
-            }
-
-            if (opponentChoice > tardarChoice) {
-                tardarChoice = opponentChoice;
-            }
-        }
-
-        this.score = tardarChoice;
-
-        if (children.isEmpty()) {
-            this.trendScore = 0;
-            return;
-        }*/
-
-        // Now it needs to clear the children and call the GC
 
         this.children.clear();
     }
